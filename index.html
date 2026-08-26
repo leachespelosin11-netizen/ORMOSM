@@ -330,6 +330,75 @@ function seedState(){
 }
 
 const HAS_ENV_STORAGE = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+// Datos de W.C. Sienna / W.C. Praga tomados de "Costo_Proyectado_WC_SIENNA_PRAGA.pdf" (estimado)
+// y "WC_SIENNA_PRAGA_Costos_FINAL.pdf" (real). Los costos compartidos del embarque (aduana,
+// maniobras, flete nacional, honorarios, etc.) son IDÉNTICOS en ambos PDFs y en ambas hojas de
+// producto — se capturan UNA sola vez como costItems del embarque (no por producto, para no
+// duplicarlos). Los conceptos que en el PDF proyectado aparecen en "-" y solo tienen importe en
+// el PDF final (Etiquetado, Almacenajes, Demoras) se capturan como extraCosts — así el
+// "estimado" (en vivo, sin extraCosts) reproduce el PDF proyectado y el "real" (con extraCosts)
+// reproduce el PDF final, igual que en el embarque Lambrín.
+function wcSiennaPragaSeedData(){
+  const shipDate = '2026-08-26';
+  return {
+    products: [
+      {id:'p_wcsienna', sku:'WC-SIENNA', name:'W.C. Sienna', supplier:'', fraction:'', uom:'pza', status:'active'},
+      {id:'p_wcpraga',  sku:'WC-PRAGA',  name:'W.C. Praga',  supplier:'', fraction:'', uom:'pza', status:'active'},
+    ],
+    shipment: {
+      id: 's_wcsienna_praga',
+      number: 'W.C. Sienna + W.C. Praga',
+      supplierName: '', forwarder: '', orderRefs: '',
+      originPort: 'China', destPort: 'Manzanillo → Guadalajara',
+      incoterm: 'FOB',
+      containers: 1, containerType: "40'HQ",
+      blNumber: '', eta: '',
+      exchangeRate: 17.7323,
+      date: shipDate,
+      phase: 0,
+      phaseEnteredAt: shipDate,
+      phaseLog: [{phase:0, date:shipDate}],
+      // Arancel/DTA/IVA de este embarque no se derivan como % del CIF (el PDF los da como
+      // importe fijo, no coinciden con 30%/0.8%/16% del valor de mercancía) — se capturan tal
+      // cual como costItems y se dejan las tasas del motor en 0 para no duplicarlos.
+      taxParams: { igi: 0, dta: 0, iva: 0, insurancePct: 0 },
+      allocationMethod: 'fob',
+      items: [
+        {id:'i_wcsienna', productId:'p_wcsienna', qty:440, fobUnit:59.00, weight:0},
+        {id:'i_wcpraga',  productId:'p_wcpraga',  qty:480, fobUnit:55.00, weight:0},
+      ],
+      // Importe + IVA de servicio de cada línea del PDF (ambos proyectado y final coinciden),
+      // convertido de MXN a USD con el T.C. 17.7323 del propio PDF, para ser consistente con el
+      // resto del motor (fobUnit ya está en USD).
+      costItems: [
+        {id:'c_wcsp_arancel',  name:'Arancel', code:'ARANCEL', basis:'flat', rate:4809.89, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_dta',      name:'Derecho de Trámite Aduanero (DTA)', code:'DTA', basis:'flat', rate:128.26, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_ivaimp',   name:'I.V.A. de importación', code:'IVAIMP', basis:'flat', rate:3355.38, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_timbre',   name:'Timbrado de documentos', code:'TIMBRE', basis:'flat', rate:315.26, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_despacho', name:'Despacho', code:'DESPACHO', basis:'flat', rate:830.80, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_maniobr',  name:'Maniobras en puerto (Terminal portuaria)', code:'MANIOBR', basis:'flat', rate:1169.65, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_colchon',  name:'Colchón de gastos', code:'COLCHON', basis:'flat', rate:111.14, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_fletenac', name:'Flete Nacional Manzanillo-Guadalajara', code:'FLETENAC', basis:'flat', rate:1520.95, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_segflete', name:'Seguro Flete Nacional', code:'SEGFLETE', basis:'flat', rate:165.51, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_cargoadm', name:'Cargo Administrativo ORMO', code:'CARGOADM', basis:'flat', rate:607.38, qty:1, includeInCIF:false, isRealExpense:true},
+        {id:'c_wcsp_honorag',  name:'Honorarios Agente aduanal', code:'HONORAG', basis:'flat', rate:1115.89, qty:1, includeInCIF:false, isRealExpense:true},
+      ],
+      // Solo aparecen en el PDF "FINAL" (en el "proyectado" están en "-"): se guardan en MXN
+      // (currency:'MXN') y el motor ya los convierte con exchangeRate — no hace falta convertir
+      // a mano. Etiquetado y Almacenajes son del embarque completo; Demoras sí difiere por
+      // producto en el PDF, así que se capturan por separado.
+      extraCosts: [
+        {id:'x_wcsp_etiquetado', concept:'Etiquetado', category:'Otro', amount:60468.50, currency:'MXN', date:shipDate, productId:null, notes:'No estaba en la proyección original; solo aparece en el costo final.'},
+        {id:'x_wcsp_almacenajes', concept:'Almacenajes', category:'Almacenamiento', amount:51859.95, currency:'MXN', date:shipDate, productId:null, notes:'No estaba en la proyección original; solo aparece en el costo final.'},
+        {id:'x_wcsp_demoras_sienna', concept:'Demoras', category:'Demoras', amount:24278.99, currency:'MXN', date:shipDate, productId:'p_wcsienna', notes:'No estaba en la proyección original; solo aparece en el costo final.'},
+        {id:'x_wcsp_demoras_praga', concept:'Demoras', category:'Demoras', amount:12139.49, currency:'MXN', date:shipDate, productId:'p_wcpraga', notes:'No estaba en la proyección original; solo aparece en el costo final.'},
+      ],
+      payments: [],
+      estimateSnapshot: null,
+    },
+  };
+}
+
 async function loadState(){
   try{
     if(HAS_ENV_STORAGE){
@@ -340,11 +409,25 @@ async function loadState(){
       if(raw) STATE = JSON.parse(raw);
     }
   }catch(e){ /* not found / corrupted */ }
-  if(!STATE){ STATE = seedState(); await saveState(); return; }
+  if(!STATE){
+    STATE = seedState();
+    const wcsp = wcSiennaPragaSeedData();
+    STATE.products.push(...wcsp.products);
+    STATE.shipments.push(wcsp.shipment);
+    await saveState();
+    return;
+  }
   // Migración suave: si el estado guardado es de antes del sistema de usuarios, no lo pisamos —
   // solo completamos lo que falte, para no perder embarques/productos ya capturados.
   if(!Array.isArray(STATE.users) || !STATE.users.length){ STATE.users = seedState().users; }
   if(!('session' in STATE)) STATE.session = null;
+  // Migración aditiva: agrega el embarque W.C. Sienna / W.C. Praga si todavía no existe, sin
+  // tocar ningún producto/embarque/dato que ya esté capturado.
+  if(!STATE.shipments.some(sh=>sh.id==='s_wcsienna_praga')){
+    const wcsp = wcSiennaPragaSeedData();
+    wcsp.products.forEach(p=>{ if(!STATE.products.some(x=>x.id===p.id)) STATE.products.push(p); });
+    STATE.shipments.push(wcsp.shipment);
+  }
   await saveState();
 }
 async function saveState(){
