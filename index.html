@@ -357,6 +357,17 @@ function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
+let saveFlash = null; // key of the last explicit "Guardar" click, shows a brief confirmation
+async function saveWithFlash(key){
+  await saveState();
+  saveFlash = key;
+  render();
+  setTimeout(()=>{ if(saveFlash===key){ saveFlash=null; render(); } }, 1600);
+}
+function saveFlashBadge(key){
+  return saveFlash===key ? `<span class="pill green" style="margin-left:6px;">Guardado ✓</span>` : '';
+}
+
 let openMenu = null; // e.g. 'kebab-s1' or 'report-s1' or 'prod-p1'
 function toggleMenu(id){ openMenu = (openMenu===id) ? null : id; render(); }
 function productHasHistory(productId){
@@ -1025,20 +1036,32 @@ function renderProducts(){
         </span>
       </h3>
       <table>
-        <tr><th>Producto</th><th>Proveedor</th><th class="num-cell">Precio FOB</th><th class="num-cell">Costo GDL aprox.</th><th class="num-cell">Costo real</th><th>Estado</th><th></th></tr>
+        <tr><th>Nombre</th><th>SKU</th><th>Fracción</th><th>Proveedor</th><th class="num-cell">Precio FOB</th><th class="num-cell">Costo GDL aprox.</th><th class="num-cell">Costo real</th><th>Estado</th><th></th></tr>
         ${rows.map(({p,latest})=>{
           const menuId = 'prod-'+p.id;
           const hasHist = productHasHistory(p.id);
           const isArchived = p.status==='archived';
+          const fobDisplay = latest ? latest.fobUnit : (p.refFobUnit||'');
           return `
           <tr style="${isArchived?'opacity:.55':''}">
-            <td>${p.name} <span class="pill gray">${p.sku}</span></td>
-            <td>${p.supplier||'—'}</td>
-            <td class="num-cell">${latest?usd(latest.fobUnit):'—'}</td>
+            <td><input data-prod-field="name" data-prod-id="${p.id}" value="${p.name}" ${dis()} style="min-width:150px"/></td>
+            <td><input data-prod-field="sku" data-prod-id="${p.id}" value="${p.sku}" ${dis()} style="width:110px"/></td>
+            <td><input data-prod-field="fraction" data-prod-id="${p.id}" value="${p.fraction||''}" ${dis()} style="width:100px"/></td>
+            <td><select data-prod-field="supplier" data-prod-id="${p.id}" ${dis()}>
+              <option value="">(sin asignar)</option>
+              ${STATE.suppliers.filter(s=>s.status!=='inactive' || s.name===p.supplier).map(s=>`<option value="${s.name}" ${s.name===p.supplier?'selected':''}>${s.name}</option>`).join('')}
+              ${p.supplier && !STATE.suppliers.some(s=>s.name===p.supplier) ? `<option value="${p.supplier}" selected>${p.supplier} (sin registrar)</option>` : ''}
+            </select></td>
+            <td class="num-cell">
+              ${latest
+                ? usd(latest.fobUnit)
+                : `<input type="number" step="0.01" data-prod-field="refFobUnit" data-prod-id="${p.id}" value="${p.refFobUnit||''}" placeholder="0.00" ${dis()} style="width:80px"/>`}
+            </td>
             <td class="num-cell">${latest?usd(latest.estUnit):'—'}</td>
             <td class="num-cell">${latest?usd(latest.realUnit):'—'}</td>
             <td><span class="pill ${isArchived?'gray':'green'}">${isArchived?'Archivado':'Activo'}</span></td>
             <td class="actions-cell">
+              ${isAdmin() ? `<button class="btn xs ghost" data-save-product="${p.id}">Guardar</button>${saveFlashBadge('prod-'+p.id)}` : ''}
               <div class="menu-wrap">
                 <button class="kebab-btn" data-menu-toggle="${menuId}">⋯</button>
                 <div class="menu-dropdown" style="display:${openMenu===menuId?'block':'none'}">
@@ -1054,6 +1077,7 @@ function renderProducts(){
           </tr>`;
         }).join('')}
       </table>
+      ${isAdmin() ? `<div class="info-note" style="margin-top:12px;margin-bottom:0;">Los cambios se guardan automáticamente al salir de cada campo. El botón "Guardar" es solo una confirmación explícita.</div>` : ''}
     </div>
 
     ${rows.map(({p,history})=>`
@@ -1100,6 +1124,7 @@ function renderDirectory(kind){
             <td><input data-dir-field="notes" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.notes||''}" ${dis()} style="width:140px"/></td>
             <td><span class="pill ${isInactive?'gray':'green'}">${isInactive?'Inactivo':'Activo'}</span></td>
             <td class="actions-cell">
+              ${isAdmin() ? `<button class="btn xs ghost" data-save-dir="${kind}:${x.id}">Guardar</button>${saveFlashBadge('dir-'+kind+'-'+x.id)}` : ''}
               <div class="menu-wrap">
                 <button class="kebab-btn" data-menu-toggle="${menuId}">⋯</button>
                 <div class="menu-dropdown" style="display:${openMenu===menuId?'block':'none'}">
@@ -1114,6 +1139,7 @@ function renderDirectory(kind){
           </tr>`;
         }).join('')}
       </table>` : `<div class="empty">Sin ${labelPlural.toLowerCase()} registrados todavía.</div>`}
+      ${isAdmin() && list.length ? `<div class="info-note" style="margin-top:12px;margin-bottom:0;">Los cambios se guardan automáticamente al salir de cada campo. El botón "Guardar" es solo una confirmación explícita.</div>` : ''}
     </div>
   `;
 }
@@ -1170,11 +1196,15 @@ function renderShipmentDetail(sh, r){
     <div class="card">
       <h3>${sh.number} <small>${sh.originPort} → ${sh.destPort}</small>
         <span class="row-actions">
+          ${isAdmin() ? `<button class="btn xs ghost" data-save-shipment="${sh.id}">Guardar embarque</button>${saveFlashBadge('ship-'+sh.id)}` : ''}
           <button class="btn xs ghost" data-report-pdf="${sh.id}">Descargar reporte (PDF)</button>
           <button class="btn xs ghost" data-report-xlsx="${sh.id}">Excel</button>
         </span>
       </h3>
       <div class="grid-3">
+        <div class="field"><label>Nombre / número de embarque</label>
+          <input data-sh-field="number" value="${sh.number}" ${dis()}/>
+        </div>
         <div class="field"><label>Proveedor</label>
           <select data-sh-field="supplierName" ${dis()}>
             <option value="">(sin asignar)</option>
@@ -1861,6 +1891,28 @@ function attachHandlers(){
       STATE.products.push({id:uid('p'), sku:'NUEVO-SKU', name:'Nuevo producto', supplier:'', fraction:'', uom:'pza', status:'active'});
       await saveState(); render();
     });
+  });
+
+  document.querySelectorAll('[data-prod-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const p = STATE.products.find(x=>x.id===el.dataset.prodId);
+      if(!p) return;
+      const field = el.dataset.prodField;
+      let val = el.value;
+      if(field==='refFobUnit') val = parseFloat(val)||0;
+      p[field] = val;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-save-product]').forEach(el=>{
+    el.addEventListener('click', ()=> saveWithFlash('prod-'+el.dataset.saveProduct));
+  });
+  document.querySelectorAll('[data-save-dir]').forEach(el=>{
+    el.addEventListener('click', ()=> saveWithFlash('dir-'+el.dataset.saveDir.replace(':','-')));
+  });
+  document.querySelectorAll('[data-save-shipment]').forEach(el=>{
+    el.addEventListener('click', ()=> saveWithFlash('ship-'+el.dataset.saveShipment));
   });
 
   document.querySelectorAll('[data-view-history]').forEach(el=>{
