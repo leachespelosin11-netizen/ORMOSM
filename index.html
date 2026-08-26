@@ -155,36 +155,29 @@
     .grid-kpi, .grid-3, .grid-4, .grid-5, .grid-2{grid-template-columns:1fr;}
     table{font-size:11.5px;}
   }
+  /* --- auth / RBAC --- */
+  .hidden{display:none !important;}
+  #auth-screen{min-height:100vh;display:none;align-items:center;justify-content:center;background:var(--hull);padding:20px;}
+  .auth-card{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:32px 30px;width:100%;max-width:380px;}
+  .auth-brand{text-align:center;margin-bottom:22px;}
+  .auth-brand .mark{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--manifest);text-transform:uppercase;}
+  .auth-brand h1{font-family:var(--display);font-size:20px;font-weight:800;margin:6px 0 0 0;color:var(--ink);letter-spacing:-0.01em;}
+  .auth-brand .sub{font-size:12.5px;color:var(--ink-soft);margin-top:8px;line-height:1.5;}
+  .user-menu .user-name{font-weight:700;font-size:13px;color:#fff;}
+  .user-menu .user-role{font-family:var(--mono);font-size:10.5px;color:#8ea3ba;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
 </style>
 </head>
 <body>
-<div class="app">
+<div id="auth-screen"></div>
+<div class="app hidden" id="app-shell">
   <div class="sidebar">
     <div class="brand">
       <div class="mark">ORMO · Manifiesto</div>
       <h1>Control de<br/>Importaciones</h1>
       <div class="sub">China → Guadalajara</div>
     </div>
-    <nav id="nav">
-      <button data-view="dashboard" class="active"><span class="num">01</span><span>Dashboard</span></button>
-      <button data-view="products"><span class="num">02</span><span>Productos</span></button>
-      <button data-view="suppliers"><span class="num">03</span><span>Proveedores</span></button>
-      <button data-view="forwarders"><span class="num">04</span><span>Forwarders</span></button>
-      <button data-view="shipments"><span class="num">05</span><span>Embarques</span></button>
-      <button data-view="payments"><span class="num">06</span><span>Pagos</span></button>
-      <button data-view="params"><span class="num">07</span><span>Parámetros</span></button>
-      <button data-view="simulator"><span class="num">08</span><span>Simulador</span></button>
-    </nav>
-    <div class="sidebar-foot">
-      <div class="role-switch">
-        <label>Sesión actual</label>
-        <select id="role-select">
-          <option value="admin">Administrador</option>
-          <option value="socio">Socio</option>
-        </select>
-      </div>
-      <div class="role-note" id="role-note"></div>
-    </div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot" id="sidebar-foot"></div>
   </div>
   <main id="main"></main>
 </div>
@@ -193,7 +186,7 @@
 /* =========================================================
    ESTADO Y PERSISTENCIA
 ========================================================= */
-const STORE_KEY = 'ormo-import-costs-v6';
+const STORE_KEY = 'ormo-import-costs-v7';
 let STATE = null;
 
 const PHASES = [
@@ -225,7 +218,17 @@ function paymentLabel(p){
 
 function seedState(){
   return {
-    role: 'admin',
+    // Cuentas reales. NO se guarda contraseña en texto plano: solo hash SHA-256(salt+':'+password) + salt.
+    // Contraseñas temporales generadas una sola vez y entregadas fuera de este archivo; mustChangePassword
+    // fuerza a cada usuario a reemplazarla en su primer login.
+    users: [
+      {id:'u1', name:'Liliana Morales',  email:'liliana.morales@ormo.mx',  role:'socio', salt:'0b63a3cec45d0c8c0ae4564776418c1f', passwordHash:'7a4704617f17a50a70964f75c6c20e1f7a9a4aa544b2d96e689d36a1a162f045', mustChangePassword:true, active:true},
+      {id:'u2', name:'Ramiro Morales',   email:'ramiro.morales@ormo.mx',   role:'socio', salt:'cc59e35e9be20204ba7b60f365ec95c6', passwordHash:'8550aad0a7c86a2d952bdc937feade66fa62a3821cbac72820c244452ff52bf1', mustChangePassword:true, active:true},
+      {id:'u3', name:'Cristhian Ortiz',  email:'cristhian.ortiz@ormo.mx',  role:'socio', salt:'eedbddad5a526ea4661711819a90790d', passwordHash:'f8f876a19bb69f5e2c2bbc50b62e58caa920b03a5e9dc67e2973cdbdb7d9a421', mustChangePassword:true, active:true},
+      {id:'u4', name:'Leon Leach',       email:'leon.leach@ormo.mx',       role:'admin', salt:'dff0f6a68f047ca12f6c93ed6c52b970', passwordHash:'dca41f74cd2e2f4afb7ed204dace928873132f117be1703e3ff596c4f8c7942a', mustChangePassword:true, active:true},
+      {id:'u5', name:'Enrique Valdivia', email:'enrique.valdivia@ormo.mx', role:'admin', salt:'7b5bf59e8a63e28f8b7a9a4b3ca01554', passwordHash:'435b2264c9309ec789acaa74d17a433d95a3e105af5e50a4b2b593164f9945f5', mustChangePassword:true, active:true},
+    ],
+    session: null, // {userId, expiresAt}
     alertConfig: { phaseMaxDays: 10, paymentSoonDays: 5, extraCostThreshold: 500 },
     taxParams: { igi: 0.25, dta: 0.008, iva: 0.16, insurancePct: 0.0065 },
     suppliers: [
@@ -326,21 +329,31 @@ function seedState(){
   };
 }
 
+const HAS_ENV_STORAGE = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
 async function loadState(){
   try{
-    const res = await window.storage.get(STORE_KEY, false);
-    if(res && res.value){ STATE = JSON.parse(res.value); return; }
-  }catch(e){ /* not found */ }
-  STATE = seedState();
+    if(HAS_ENV_STORAGE){
+      const res = await window.storage.get(STORE_KEY, false);
+      if(res && res.value){ STATE = JSON.parse(res.value); }
+    } else {
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw) STATE = JSON.parse(raw);
+    }
+  }catch(e){ /* not found / corrupted */ }
+  if(!STATE){ STATE = seedState(); await saveState(); return; }
+  // Migración suave: si el estado guardado es de antes del sistema de usuarios, no lo pisamos —
+  // solo completamos lo que falte, para no perder embarques/productos ya capturados.
+  if(!Array.isArray(STATE.users) || !STATE.users.length){ STATE.users = seedState().users; }
+  if(!('session' in STATE)) STATE.session = null;
   await saveState();
 }
 async function saveState(){
-  try{ await window.storage.set(STORE_KEY, JSON.stringify(STATE), false); }
-  catch(e){ console.error('storage error', e); }
+  try{
+    if(HAS_ENV_STORAGE) await window.storage.set(STORE_KEY, JSON.stringify(STATE), false);
+    else localStorage.setItem(STORE_KEY, JSON.stringify(STATE));
+  }catch(e){ console.error('storage error', e); }
 }
 function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
-function isAdmin(){ return STATE.role !== 'socio'; }
-function dis(){ return isAdmin() ? '' : 'disabled'; }
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
@@ -349,6 +362,106 @@ function toggleMenu(id){ openMenu = (openMenu===id) ? null : id; render(); }
 function productHasHistory(productId){
   return STATE.shipments.some(sh=> sh.items.some(it=>it.productId===productId));
 }
+
+/* =========================================================
+   AUTENTICACIÓN Y CONTROL DE ACCESO POR ROLES (RBAC)
+   -----------------------------------------------------------
+   IMPORTANTE: esta app es 100% cliente (sin backend/API propios), por decisión
+   explícita del usuario. Eso significa que esto es control de acceso de
+   INTERFAZ, no un perímetro de seguridad real: cualquiera con las herramientas
+   de desarrollador del navegador puede leer este código, ver los hashes y
+   saltarse estas comprobaciones. Las contraseñas se guardan hasheadas
+   (SHA-256 + salt) para no exponerlas en texto plano, pero eso NO equivale a
+   seguridad real de producción — para eso se necesita backend + base de datos
+   (ver README "Qué falta para producción").
+========================================================= */
+const ROLES = {
+  socio: { label:'Socio', views:['dashboard','shipments','payments','simulator'], canWrite:false },
+  admin: { label:'Administrador', views:['dashboard','products','suppliers','forwarders','shipments','payments','params','simulator','users'], canWrite:true },
+};
+const SESSION_TTL_MS = 30*60*1000; // 30 min de inactividad
+
+function currentUser(){
+  if(!STATE.session) return null;
+  const u = (STATE.users||[]).find(x=>x.id===STATE.session.userId);
+  return (u && u.active!==false) ? u : null;
+}
+function currentRoleDef(){ const u=currentUser(); return u ? ROLES[u.role] : null; }
+function isAdmin(){ return currentRoleDef()? currentRoleDef().canWrite===true : false; }
+function dis(){ return isAdmin() ? '' : 'disabled'; }
+function canAccessView(view){ const r=currentRoleDef(); return !!r && r.views.includes(view); }
+function isSessionValid(){ return !!STATE.session && Date.now() < STATE.session.expiresAt; }
+function expireSessionIfNeeded(){
+  if(STATE.session && !isSessionValid()){ STATE.session = null; saveState(); }
+}
+function touchSession(){ if(STATE.session) STATE.session.expiresAt = Date.now()+SESSION_TTL_MS; }
+
+async function sha256Hex(str){
+  const data = new TextEncoder().encode(str);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function genSalt(){ return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+async function hashPassword(password, salt){ return sha256Hex(salt+':'+password); }
+function generateTempPassword(len=12){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(n=>chars[n % chars.length]).join('');
+}
+
+let loginError = '';
+let pwChangeError = '';
+let loginBusy = false;
+
+async function attemptLogin(email, password){
+  loginBusy = true;
+  const u = (STATE.users||[]).find(x=>x.email.toLowerCase()===String(email||'').trim().toLowerCase());
+  if(!u || u.active===false){ loginError='Correo o contraseña incorrectos.'; loginBusy=false; return; }
+  const h = await hashPassword(password, u.salt);
+  loginBusy = false;
+  if(h !== u.passwordHash){ loginError='Correo o contraseña incorrectos.'; return; }
+  loginError='';
+  STATE.session = { userId: u.id, expiresAt: Date.now()+SESSION_TTL_MS };
+  await saveState();
+  navigateTo(u.mustChangePassword ? 'login' : 'dashboard', true);
+}
+async function logout(){
+  STATE.session = null;
+  await saveState();
+  navigateTo('login', true);
+}
+async function completePasswordChange(newPw, confirmPw){
+  const u = currentUser();
+  if(!u) return;
+  if(!newPw || newPw.length<8){ pwChangeError='La contraseña debe tener al menos 8 caracteres.'; render(); return; }
+  if(newPw !== confirmPw){ pwChangeError='Las contraseñas no coinciden.'; render(); return; }
+  const salt = genSalt();
+  u.salt = salt;
+  u.passwordHash = await hashPassword(newPw, salt);
+  u.mustChangePassword = false;
+  pwChangeError='';
+  await saveState();
+  navigateTo('dashboard', true);
+}
+
+/* ---------- Router (URLs reales: /productos, /embarques, etc.) ---------- */
+const VIEW_PATHS = {
+  dashboard:'/dashboard', products:'/productos', suppliers:'/proveedores', forwarders:'/forwarders',
+  shipments:'/embarques', payments:'/pagos', params:'/parametros', simulator:'/simulador',
+  users:'/usuarios', login:'/login',
+};
+const PATH_VIEWS = Object.fromEntries(Object.entries(VIEW_PATHS).map(([k,v])=>[v,k]));
+function viewFromPath(path){ return PATH_VIEWS[path] || 'dashboard'; }
+function navigateTo(view, replace){
+  currentView = view;
+  const path = VIEW_PATHS[view] || '/dashboard';
+  if(location.pathname !== path){
+    if(replace) history.replaceState(null,'',path); else history.pushState(null,'',path);
+  }
+  render();
+}
+window.addEventListener('popstate', ()=>{ currentView = viewFromPath(location.pathname); render(); });
 
 /* =========================================================
    MOTOR DE CÁLCULO
@@ -634,15 +747,139 @@ let currentView = 'dashboard';
 let selectedShipmentId = null;
 let simOverrides = {};
 
-function setView(v){ currentView=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v)); render(); }
+function setView(v){
+  if(!canAccessView(v)){ navigateTo('dashboard'); return; }
+  navigateTo(v);
+}
 
 document.getElementById('nav').addEventListener('click', e=>{
   const btn = e.target.closest('button[data-view]');
   if(btn) setView(btn.dataset.view);
 });
 
+function renderNav(u){
+  const role = ROLES[u.role];
+  const items = [
+    {view:'dashboard', num:'01', label:'Dashboard'},
+    {view:'products', num:'02', label:'Productos'},
+    {view:'suppliers', num:'03', label:'Proveedores'},
+    {view:'forwarders', num:'04', label:'Forwarders'},
+    {view:'shipments', num:'05', label:'Embarques'},
+    {view:'payments', num:'06', label:'Pagos'},
+    {view:'params', num:'07', label:'Parámetros'},
+    {view:'simulator', num:'08', label:'Simulador'},
+    {view:'users', num:'09', label:'Usuarios'},
+  ].filter(it=>role.views.includes(it.view));
+  return items.map(it=>`<button data-view="${it.view}" class="${it.view===currentView?'active':''}"><span class="num">${it.num}</span><span>${it.label}</span></button>`).join('');
+}
+
+function renderSidebarFoot(u){
+  const el = document.getElementById('sidebar-foot');
+  if(!el) return;
+  const role = ROLES[u.role];
+  el.innerHTML = `
+    <div class="user-menu">
+      <div class="user-name">${u.name}</div>
+      <div class="user-role">${role.label}</div>
+      <button class="btn small ghost" id="btn-logout" style="margin-top:10px;width:100%;">Cerrar sesión</button>
+    </div>`;
+}
+
+function renderLogin(){
+  return `
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="mark">ORMO · Manifiesto</div>
+      <h1>Control de Importaciones</h1>
+    </div>
+    <form id="login-form">
+      <div class="field"><label>Correo</label><input type="email" id="login-email" required autocomplete="username"/></div>
+      <div class="field"><label>Contraseña</label><input type="password" id="login-password" required autocomplete="current-password"/></div>
+      ${loginError? `<div class="flag-note">${loginError}</div>` : ''}
+      <button class="btn" type="submit" style="width:100%;justify-content:center;" ${loginBusy?'disabled':''}>Iniciar sesión</button>
+    </form>
+  </div>`;
+}
+
+function renderChangePassword(u){
+  return `
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="mark">ORMO · Manifiesto</div>
+      <h1>Actualiza tu contraseña</h1>
+      <div class="sub">Es tu primer inicio de sesión, ${u.name}. Define una contraseña nueva para continuar.</div>
+    </div>
+    <form id="change-password-form">
+      <div class="field"><label>Nueva contraseña (mín. 8 caracteres)</label><input type="password" id="new-password" minlength="8" required autocomplete="new-password"/></div>
+      <div class="field"><label>Confirmar contraseña</label><input type="password" id="confirm-password" minlength="8" required autocomplete="new-password"/></div>
+      ${pwChangeError? `<div class="flag-note">${pwChangeError}</div>` : ''}
+      <button class="btn" type="submit" style="width:100%;justify-content:center;">Guardar y continuar</button>
+    </form>
+    <button class="btn ghost" id="btn-cancel-pw-change" style="width:100%;justify-content:center;margin-top:8px;">Cancelar y cerrar sesión</button>
+  </div>`;
+}
+
+function render403(){
+  return `
+  <div class="card" style="text-align:center;padding:40px 20px;">
+    <h2 class="page-title" style="justify-content:center;">403 — Acceso no autorizado</h2>
+    <div class="page-sub">No tienes permiso para ver esta sección con tu rol actual.</div>
+    <button class="btn" id="btn-go-dashboard" style="margin-top:10px;">Ir al Dashboard</button>
+  </div>`;
+}
+
+function attachAuthHandlers(){
+  const form = document.getElementById('login-form');
+  if(form) form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const email = document.getElementById('login-email').value;
+    const pw = document.getElementById('login-password').value;
+    await attemptLogin(email, pw);
+    render();
+  });
+  const cform = document.getElementById('change-password-form');
+  if(cform) cform.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    await completePasswordChange(document.getElementById('new-password').value, document.getElementById('confirm-password').value);
+  });
+  const cancelBtn = document.getElementById('btn-cancel-pw-change');
+  if(cancelBtn) cancelBtn.addEventListener('click', ()=> logout());
+}
+
 function render(){
+  expireSessionIfNeeded();
+  const authScreen = document.getElementById('auth-screen');
+  const appShell = document.getElementById('app-shell');
+  const u = currentUser();
+
+  if(!u){
+    loginBusy = false;
+    appShell.classList.add('hidden');
+    authScreen.style.display = 'flex';
+    authScreen.innerHTML = renderLogin();
+    attachAuthHandlers();
+    return;
+  }
+  if(u.mustChangePassword){
+    appShell.classList.add('hidden');
+    authScreen.style.display = 'flex';
+    authScreen.innerHTML = renderChangePassword(u);
+    attachAuthHandlers();
+    return;
+  }
+
+  touchSession(); saveState();
+  authScreen.style.display = 'none';
+  appShell.classList.remove('hidden');
+  document.getElementById('nav').innerHTML = renderNav(u);
+  renderSidebarFoot(u);
+
   const main = document.getElementById('main');
+  if(!canAccessView(currentView)){
+    main.innerHTML = render403();
+    attachHandlers();
+    return;
+  }
   if(currentView==='dashboard') main.innerHTML = renderDashboard();
   else if(currentView==='products') main.innerHTML = renderProducts();
   else if(currentView==='suppliers') main.innerHTML = renderDirectory('suppliers');
@@ -651,10 +888,7 @@ function render(){
   else if(currentView==='payments') main.innerHTML = renderPayments();
   else if(currentView==='params') main.innerHTML = renderParams();
   else if(currentView==='simulator') main.innerHTML = renderSimulator();
-  document.getElementById('role-select').value = STATE.role;
-  document.getElementById('role-note').textContent = isAdmin()
-    ? 'Puede editar productos, proveedores, forwarders, embarques, pagos y parámetros.'
-    : 'Solo lectura + simulador. No modifica datos oficiales.';
+  else if(currentView==='users') main.innerHTML = renderUsers();
   attachHandlers();
 }
 
@@ -1228,6 +1462,31 @@ function renderParams(){
   `;
 }
 
+/* ---------- USUARIOS (solo Administrador) ---------- */
+function renderUsers(){
+  return `
+    <h2 class="page-title">Usuarios</h2>
+    <div class="page-sub">Cuentas del sistema. Las contraseñas nunca se muestran aquí — solo puedes generar una nueva temporal.</div>
+    <div class="card">
+      <table>
+        <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estatus</th><th>Debe cambiar contraseña</th><th></th></tr>
+        ${(STATE.users||[]).map(u=>`
+          <tr style="${u.active===false?'opacity:.55':''}">
+            <td>${u.name}</td>
+            <td>${u.email}</td>
+            <td><span class="pill blue">${ROLES[u.role].label}</span></td>
+            <td><span class="pill ${u.active===false?'gray':'green'}">${u.active===false?'Inactivo':'Activo'}</span></td>
+            <td>${u.mustChangePassword?'Sí':'No'}</td>
+            <td class="row-actions">
+              <button class="btn xs ghost" data-toggle-user-active="${u.id}">${u.active===false?'Reactivar':'Desactivar'}</button>
+              <button class="btn xs ghost" data-reset-user-pw="${u.id}">Generar contraseña temporal</button>
+            </td>
+          </tr>`).join('')}
+      </table>
+    </div>
+  `;
+}
+
 /* ---------- SIMULADOR ---------- */
 function renderSimulator(){
   if(!selectedShipmentId && STATE.shipments.length) selectedShipmentId = STATE.shipments[0].id;
@@ -1330,8 +1589,37 @@ function renderSimulator(){
    HANDLERS
 ========================================================= */
 function attachHandlers(){
-  const roleSel = document.getElementById('role-select');
-  roleSel.onchange = async ()=>{ STATE.role = roleSel.value; await saveState(); render(); };
+  const btnLogout = document.getElementById('btn-logout');
+  if(btnLogout) btnLogout.addEventListener('click', ()=> logout());
+
+  const btnGoDash = document.getElementById('btn-go-dashboard');
+  if(btnGoDash) btnGoDash.addEventListener('click', ()=> navigateTo('dashboard'));
+
+  // Usuarios (solo admin — la vista misma ya está protegida por canAccessView)
+  document.querySelectorAll('[data-toggle-user-active]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const u = STATE.users.find(x=>x.id===el.dataset.toggleUserActive);
+      if(!u) return;
+      if(u.id===currentUser().id){ alert('No puedes desactivar tu propia cuenta.'); return; }
+      u.active = u.active===false ? true : false;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-reset-user-pw]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const u = STATE.users.find(x=>x.id===el.dataset.resetUserPw);
+      if(!u) return;
+      const tempPw = generateTempPassword();
+      const salt = genSalt();
+      u.salt = salt;
+      u.passwordHash = await hashPassword(tempPw, salt);
+      u.mustChangePassword = true;
+      await saveState(); render();
+      alert(`Nueva contraseña temporal para ${u.name}:\n\n${tempPw}\n\nCompártela de forma segura. No queda guardada en ningún lugar ni se puede volver a mostrar.`);
+    });
+  });
 
   // Menús desplegables (⋯)
   document.querySelectorAll('[data-menu-toggle]').forEach(el=>{
@@ -1721,6 +2009,8 @@ function attachHandlers(){
 ========================================================= */
 (async function boot(){
   await loadState();
+  expireSessionIfNeeded();
+  currentView = viewFromPath(location.pathname);
   render();
 })();
 </script>

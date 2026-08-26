@@ -55,6 +55,50 @@ Puntos no obvios del motor que hay que preservar:
   `% × total correspondiente del embarque`, recalculado cada vez que cambia el %
   o el concepto.
 
+## Autenticación y control de acceso por roles
+
+Se agregó un sistema de login y RBAC (roles y permisos) **dentro del mismo archivo
+`index.html`**, sin backend, por decisión explícita: no se quiso reconstruir el
+proyecto ni introducir infraestructura nueva (base de datos, API) todavía.
+
+- **Roles**: `socio` (Dashboard, Embarques, Pagos, Simulador — solo lectura, salvo
+  el Simulador que es de uso libre) y `admin` (acceso total, incluida la
+  administración de usuarios).
+- **Usuarios**: 5 cuentas reales precargadas en `seedState().users` (Liliana
+  Morales, Ramiro Morales, Cristhian Ortiz — socios; Leon Leach, Enrique
+  Valdivia — administradores). Cada una con su propio correo y contraseña.
+- **Contraseñas**: nunca en texto plano. Se guarda `SHA-256(salt + ':' + password)`
+  más un `salt` aleatorio por usuario. Las contraseñas temporales originales se
+  generaron una sola vez con Python (`secrets`) y se entregaron fuera de este
+  repositorio (por chat) — no están ni estuvieron nunca en el código ni en git.
+  Todas fuerzan cambio de contraseña en el primer login (`mustChangePassword`).
+- **Rutas reales**: `/dashboard`, `/embarques`, `/pagos`, `/simulador`,
+  `/productos`, `/proveedores`, `/forwarders`, `/parametros`, `/usuarios`,
+  navegación con `history.pushState`. `vercel.json` reescribe cualquier ruta a
+  `index.html` para que funcionen al entrar directo por URL.
+- **Persistencia**: se corrigió `loadState()`/`saveState()` para usar
+  `localStorage` cuando `window.storage` no existe (que es el caso en cualquier
+  navegador real / en el deploy de Vercel) — antes de este cambio, la app
+  nunca persistía nada fuera del entorno original donde se generó.
+
+### Límite de seguridad importante — léelo antes de confiar en esto para datos sensibles
+
+Este es un sistema de **autorización de interfaz**, no un perímetro de
+seguridad real, porque toda la lógica corre en el navegador y no hay backend
+que la haga cumplir:
+
+- Cualquier persona con las herramientas de desarrollador puede leer este
+  archivo, ver los hashes de contraseñas y saltarse cualquier verificación de
+  rol modificando el JavaScript en tiempo de ejecución.
+- No existe una "API" que pueda rechazar una petición de un socio: no hay
+  API, todo el cálculo y guardado ocurre en el cliente.
+- Los hashes de contraseña, aunque no son texto plano, sí se descargan al
+  navegador de cualquiera que visite el sitio y son atacables offline.
+
+Para una protección real (la que normalmente se espera de "no se puede
+saltar por API directa") se necesita backend + base de datos — ver la sección
+siguiente, que sigue vigente y ahora es más urgente.
+
 ## Qué falta para producción
 
 Este prototipo es intencionalmente de un solo archivo, sin backend ni base de
