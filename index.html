@@ -1,0 +1,1728 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ORMO · Control de Importaciones</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#151b26;
+    --hull:#141d2e;
+    --hull-2:#1d2a42;
+    --paper:#f6f5f2;
+    --card:#ffffff;
+    --line:#e6e4dd;
+    --line-soft:#eeece6;
+    --manifest:#c2703c;
+    --manifest-deep:#9c5828;
+    --manifest-soft:#fbeee3;
+    --ok:#2f8562;
+    --ok-soft:#e5f3ec;
+    --warn:#c2453f;
+    --warn-soft:#fbe9e8;
+    --ink-soft:#69707d;
+    --ink-faint:#9aa0aa;
+    --mono: "IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+    --display: "Manrope","Inter",sans-serif;
+    --sans: "Inter","Helvetica Neue",Arial,sans-serif;
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --shadow-sm: 0 1px 2px rgba(20,29,46,0.05), 0 1px 3px rgba(20,29,46,0.06);
+    --shadow-md: 0 4px 14px rgba(20,29,46,0.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+  .app{display:grid;grid-template-columns:232px 1fr;min-height:100vh;}
+  .sidebar{background:var(--hull);color:#dce6f0;padding:20px 0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
+  .brand{padding:0 20px 16px 20px;border-bottom:1px solid #263650;margin-bottom:8px;}
+  .brand .mark{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--manifest);text-transform:uppercase;}
+  .brand h1{font-family:var(--display);font-size:19px;line-height:1.25;margin:6px 0 0 0;font-weight:800;color:#fff;letter-spacing:-0.01em;}
+  .brand .sub{font-size:11.5px;color:#8ea3ba;margin-top:4px;font-weight:500;}
+  nav{display:flex;flex-direction:column;padding:8px 10px;gap:2px;}
+  nav button{
+    all:unset;cursor:pointer;padding:10px 12px;font-size:13px;font-weight:600;color:#aebdd0;
+    display:flex;align-items:center;gap:10px;border-radius:var(--r-sm);
+  }
+  nav button .num{font-family:var(--mono);font-size:10.5px;color:#5c748f;width:16px;font-weight:500;}
+  nav button:hover{background:#1f2f49;color:#fff;}
+  nav button.active{background:var(--manifest);color:#fff;}
+  nav button.active .num{color:rgba(255,255,255,.75);}
+  .sidebar-foot{margin-top:auto;padding:14px 20px;border-top:1px solid #263650;}
+  .role-switch{display:flex;flex-direction:column;gap:6px;}
+  .role-switch label{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:#5c748f;}
+  .role-switch select{background:#1f2f49;color:#fff;border:1px solid #2c4a6e;border-radius:var(--r-sm);padding:7px 8px;font-size:12.5px;font-family:var(--sans);}
+  .role-note{font-size:10.5px;color:#7c8ba0;margin-top:8px;line-height:1.5;}
+  main{padding:30px clamp(20px,4vw,40px) 60px;max-width:1280px;}
+  h2.page-title{font-family:var(--display);font-size:24px;font-weight:800;letter-spacing:-0.01em;margin:0 0 4px 0;}
+  .page-sub{color:var(--ink-soft);font-size:13.5px;margin-bottom:20px;}
+  .grid-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px;}
+  .kpi{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm);border-radius:var(--r-md);padding:14px 16px;position:relative;}
+  .kpi .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);}
+  .kpi .val{font-family:var(--display);font-size:21px;font-weight:800;margin-top:5px;letter-spacing:-0.01em;}
+  .kpi .val.accent{color:var(--manifest-deep);}
+  .kpi .val.small{font-size:15px;font-weight:700;}
+  .card{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;}
+  .card h3{font-family:var(--display);font-weight:700;font-size:15px;margin:0 0 12px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;letter-spacing:-0.005em;}
+  .card h3 small{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);font-weight:400;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);padding:7px 8px;border-bottom:1px solid var(--line);}
+  td{padding:8px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+  tr.total td{font-weight:700;border-top:2px solid var(--ink);background:#faf9f6;}
+  .num-cell{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-family:var(--mono);white-space:nowrap;font-weight:500;}
+  .pill.blue{background:#e5edf5;color:var(--hull-2);}
+  .pill.amber{background:var(--manifest-soft);color:var(--manifest-deep);}
+  .pill.green{background:var(--ok-soft);color:var(--ok);}
+  .pill.red{background:var(--warn-soft);color:var(--warn);}
+  .pill.gray{background:#eeece6;color:#666;}
+  .btn{all:unset;box-sizing:border-box;cursor:pointer;background:var(--hull);color:#fff;padding:9px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:600;line-height:1;display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);}
+  .btn:hover{background:var(--hull-2);}
+  .btn.ghost{background:none;color:var(--hull);border:1px solid var(--line);}
+  .btn.ghost:hover{background:#f4f2ec;}
+  .btn.warn{background:var(--warn);}
+  .btn.small{padding:6px 12px;font-size:12px;}
+  .btn.xs{padding:5px 9px;font-size:11.5px;border-radius:6px;}
+  .btn[disabled]{opacity:.4;cursor:not-allowed;}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px;}
+  .field label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+  .field input, .field select{padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:13px;font-family:var(--sans);background:#fff;height:36px;}
+  .field input[type=number]{font-family:var(--mono);}
+  .field input[disabled],.field select[disabled]{background:#f4f2ec;color:#8b8f96;}
+  .grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;}
+  .grid-4{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;}
+  .grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+  .grid-5{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;}
+  .flag-note{font-size:12px;color:var(--warn);background:var(--warn-soft);border:1px solid #f3d6d4;padding:9px 12px;border-radius:var(--r-sm);margin-bottom:14px;}
+  .info-note{font-size:12px;color:var(--ink-soft);background:#f4f1ea;border:1px solid var(--line);padding:9px 12px;border-radius:var(--r-sm);margin-bottom:14px;}
+  .empty{color:var(--ink-soft);font-size:12.5px;padding:20px 0;text-align:center;}
+  .shipment-list-item{border:1px solid var(--line);padding:12px 14px;margin-bottom:8px;border-radius:var(--r-md);cursor:pointer;background:#fff;transition:border-color .12s;}
+  .shipment-list-item:hover{border-color:var(--manifest);}
+  .shipment-list-item.active{border-color:var(--manifest);background:var(--manifest-soft);}
+  .shipment-list-item .title{font-weight:700;font-size:13px;font-family:var(--display);}
+  .shipment-list-item .meta{font-size:11px;color:var(--ink-soft);margin-top:3px;font-family:var(--mono);}
+  .list-actions{display:flex;gap:4px;margin-top:8px;}
+  .icon-btn{all:unset;cursor:pointer;color:var(--warn);font-size:11px;font-family:var(--sans);font-weight:600;}
+  .icon-btn[disabled]{opacity:.3;cursor:not-allowed;}
+  .bar-track{background:var(--line-soft);height:7px;border-radius:4px;overflow:hidden;display:flex;}
+  .bar-seg{height:100%;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11px;font-family:var(--mono);}
+  .legend span.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;}
+  .sim-diff{font-family:var(--mono);font-size:12px;}
+  .sim-diff.up{color:var(--warn);}
+  .sim-diff.down{color:var(--ok);}
+  .phase-track{display:flex;gap:4px;margin:8px 0 4px 0;}
+  .phase-step{flex:1;height:6px;border-radius:3px;background:#e6e3da;}
+  .phase-step.done{background:var(--ok);}
+  .phase-step.current{background:var(--manifest);}
+  .phase-label{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:4px;}
+  .alert-item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;}
+  .alert-item:last-child{border-bottom:none;}
+  .alert-dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
+  .alert-dot.red{background:var(--warn);}
+  .alert-dot.amber{background:var(--manifest);}
+  .diff-badge{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:6px;font-weight:500;}
+  .diff-badge.up{background:var(--warn-soft);color:var(--warn);}
+  .diff-badge.down{background:var(--ok-soft);color:var(--ok);}
+  .diff-badge.flat{background:#eeece6;color:#666;}
+  /* --- compact actions / menus --- */
+  .actions-cell{display:flex;gap:4px;align-items:center;justify-content:flex-end;position:relative;}
+  .menu-wrap{position:relative;display:inline-block;}
+  .kebab-btn{all:unset;cursor:pointer;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--ink-soft);font-size:15px;line-height:1;}
+  .kebab-btn:hover{background:var(--line-soft);color:var(--ink);}
+  .menu-dropdown{position:absolute;right:0;top:30px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-md);border-radius:var(--r-md);min-width:180px;z-index:40;padding:5px;}
+  .menu-dropdown button{all:unset;display:block;width:100%;box-sizing:border-box;padding:8px 10px;font-size:12.5px;border-radius:6px;cursor:pointer;color:var(--ink);}
+  .menu-dropdown button:hover{background:var(--line-soft);}
+  .menu-dropdown button.danger{color:var(--warn);}
+  .menu-dropdown .menu-sep{height:1px;background:var(--line-soft);margin:4px 2px;}
+  .row-actions{display:flex;gap:4px;justify-content:flex-end;align-items:center;}
+  /* --- responsive --- */
+  @media (max-width: 1080px){
+    .app{grid-template-columns:76px 1fr;}
+    .brand h1, .brand .sub, nav button span:not(.num), .sidebar-foot{display:none;}
+    .brand{padding:0 0 14px 0;text-align:center;}
+    .brand .mark{display:none;}
+    nav{align-items:center;}
+    nav button{justify-content:center;padding:12px;}
+    main{padding:22px 16px 50px;}
+    .grid-kpi{grid-template-columns:repeat(2,1fr);}
+  }
+  @media (max-width: 700px){
+    .grid-kpi, .grid-3, .grid-4, .grid-5, .grid-2{grid-template-columns:1fr;}
+    table{font-size:11.5px;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="mark">ORMO · Manifiesto</div>
+      <h1>Control de<br/>Importaciones</h1>
+      <div class="sub">China → Guadalajara</div>
+    </div>
+    <nav id="nav">
+      <button data-view="dashboard" class="active"><span class="num">01</span><span>Dashboard</span></button>
+      <button data-view="products"><span class="num">02</span><span>Productos</span></button>
+      <button data-view="suppliers"><span class="num">03</span><span>Proveedores</span></button>
+      <button data-view="forwarders"><span class="num">04</span><span>Forwarders</span></button>
+      <button data-view="shipments"><span class="num">05</span><span>Embarques</span></button>
+      <button data-view="payments"><span class="num">06</span><span>Pagos</span></button>
+      <button data-view="params"><span class="num">07</span><span>Parámetros</span></button>
+      <button data-view="simulator"><span class="num">08</span><span>Simulador</span></button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="role-switch">
+        <label>Sesión actual</label>
+        <select id="role-select">
+          <option value="admin">Administrador</option>
+          <option value="socio">Socio</option>
+        </select>
+      </div>
+      <div class="role-note" id="role-note"></div>
+    </div>
+  </div>
+  <main id="main"></main>
+</div>
+
+<script>
+/* =========================================================
+   ESTADO Y PERSISTENCIA
+========================================================= */
+const STORE_KEY = 'ormo-import-costs-v6';
+let STATE = null;
+
+const PHASES = [
+  'Producción',
+  'En tránsito',
+  'Destino / Desaduanamiento',
+  'Traslado a bodega',
+  'Bodega / Contenedor devuelto'
+];
+
+const INCOTERMS = ['EXW','FOB','FCA','CFR','CIF','CPT','CIP','DAP','DPU','DDP'];
+
+const PAYMENT_CONCEPTS = {
+  anticipo_fob: { label:'Anticipo proveedor (% FOB)', base:'fob' },
+  saldo_fob:    { label:'Saldo proveedor (% FOB)', base:'fob' },
+  logistica:    { label:'Logística (% del total)', base:'logistics' },
+  impuestos:    { label:'Impuestos (% del total)', base:'taxes' },
+  otro:         { label:'Otro (monto manual)', base:null },
+};
+function paymentBaseValue(r, baseType){
+  if(baseType==='fob') return r.fobTotal;
+  if(baseType==='logistics') return r.logisticsTotal;
+  if(baseType==='taxes') return r.taxesTotal;
+  return 0;
+}
+function paymentLabel(p){
+  return (PAYMENT_CONCEPTS[p.concept] && PAYMENT_CONCEPTS[p.concept].label) || p.label || p.concept || 'Pago';
+}
+
+function seedState(){
+  return {
+    role: 'admin',
+    alertConfig: { phaseMaxDays: 10, paymentSoonDays: 5, extraCostThreshold: 500 },
+    taxParams: { igi: 0.25, dta: 0.008, iva: 0.16, insurancePct: 0.0065 },
+    suppliers: [
+      {id:'sup1', name:'Linyi Consmos New Building Materials Co., Ltd.', country:'China', contact:'', phone:'', email:'', address:'', notes:'', status:'active'},
+    ],
+    forwarders: [
+      {id:'fw1', name:'SB Group', country:'China / México', contact:'', phone:'', email:'', address:'', notes:'', status:'active'},
+    ],
+    products: [
+      {id:'p1', sku:'LAM-INT-WPC', name:'Lambrin Interior WPC', supplier:'Linyi Consmos New Building Materials Co., Ltd.', fraction:'3918.10.02', uom:'sheet', status:'active'},
+      {id:'p2', sku:'LAM-EXT-WPC', name:'Lambrin Exterior WPC', supplier:'Linyi Consmos New Building Materials Co., Ltd.', fraction:'3918.10.02', uom:'sheet', status:'active'},
+      {id:'p3', sku:'PVC-MAR-960', name:'PVC Mármol $9.60/sh', supplier:'Linyi Consmos New Building Materials Co., Ltd.', fraction:'3921.90.99', uom:'sheet', status:'active'},
+      {id:'p4', sku:'PVC-MAR-860', name:'PVC Mármol $8.60/sh', supplier:'Linyi Consmos New Building Materials Co., Ltd.', fraction:'3921.90.99', uom:'sheet', status:'active'},
+      {id:'p5', sku:'LAM-NUEVO', name:'Lambrín (completar catálogo)', supplier:'', fraction:'', uom:'pza', status:'active'},
+    ],
+    shipments: [
+      {
+        id: 's1',
+        number: 'SBL-SEA-JUN-6831',
+        supplierName: 'Linyi Consmos New Building Materials Co., Ltd.',
+        forwarder: 'SB Group',
+        orderRefs: 'LY-AAML-260701 (01/Jul/2026) + LY-AAML-260707 (07/Jul/2026)',
+        originPort: 'Qingdao', destPort: 'Manzanillo → Guadalajara',
+        incoterm: 'FOB',
+        containers: 2, containerType: "40'HQ",
+        blNumber: 'SBLHBL260707', eta: '2026-08-05',
+        exchangeRate: 18.0,
+        date: '2026-07-07',
+        phase: 4,
+        phaseEnteredAt: '2026-08-10',
+        phaseLog: [
+          {phase:0, date:'2026-07-01'},
+          {phase:1, date:'2026-07-08'},
+          {phase:2, date:'2026-07-30'},
+          {phase:3, date:'2026-08-05'},
+          {phase:4, date:'2026-08-10'},
+        ],
+        taxParams: { igi: 0.25, dta: 0.008, iva: 0.16, insurancePct: 0.0065 },
+        allocationMethod: 'fob',
+        items: [
+          {id:'i1', productId:'p1', qty:9240, fobUnit:2.04, weight:0},
+          {id:'i2', productId:'p2', qty:1950, fobUnit:8.26, weight:0},
+          {id:'i3', productId:'p3', qty:400,  fobUnit:9.60, weight:0},
+          {id:'i4', productId:'p4', qty:200,  fobUnit:8.60, weight:0},
+        ],
+        costItems: [
+          {id:'c1', name:'EXW Cost', code:'EXW', basis:'per_container', rate:0, qty:2, includeInCIF:true},
+          {id:'c2', name:'Flete Marítimo Qingdao-Manzanillo', code:'OCEAN', basis:'per_container', rate:7100, qty:2, includeInCIF:true},
+          {id:'c3', name:'Seguro de carga (s/FOB) — solo base gravable', code:'CARGOINS', basis:'pct_fob', rate:0.0065, qty:1, includeInCIF:true, isRealExpense:false},
+          {id:'c4', name:'Dest. Bill of Lading Release Fee', code:'DBILL', basis:'per_hbl', rate:140, qty:1, includeInCIF:false},
+          {id:'c5', name:'Dest. Other Charges / Carrier', code:'DNOTE', basis:'per_container', rate:120, qty:2, includeInCIF:false},
+          {id:'c6', name:'Destination Handling', code:'DESHAL', basis:'per_hbl', rate:90, qty:1, includeInCIF:false},
+          {id:'c7', name:'Container Insurance', code:'INSUR', basis:'per_container', rate:40, qty:2, includeInCIF:false},
+          {id:'c8', name:'AMS Transmission', code:'AMSTRN', basis:'per_hbl', rate:40, qty:1, includeInCIF:false},
+          {id:'c9', name:'Delivery Cartage Manzanillo-Silao', code:'DCART', basis:'per_container', rate:1800, qty:2, includeInCIF:false},
+          {id:'c10', name:'Customs Clearance', code:'DCART2', basis:'per_container', rate:340, qty:2, includeInCIF:false},
+        ],
+        extraCosts: [
+          {id:'x1', concept:'Demora por revisión aleatoria', category:'Demoras', amount:180, currency:'USD', date:'2026-08-05', productId:null, notes:'2 días extra en aduana'},
+        ],
+        payments: [
+          {id:'pay1', concept:'anticipo_fob', pct:0.30, amount: 40516.6*0.30, dueDate:'2026-07-01', paidDate:'2026-07-01', status:'pagado'},
+          {id:'pay2', concept:'saldo_fob', pct:0.70, amount: 40516.6*0.70, dueDate:'2026-08-01', paidDate:'2026-08-01', status:'pagado'},
+        ],
+        estimateSnapshot: null
+      },
+      {
+        id: 's2',
+        number: 'Embarque Lambrín — en producción',
+        supplierName: '(completar proveedor)',
+        forwarder: '',
+        orderRefs: '',
+        originPort: 'China', destPort: 'Guadalajara',
+        incoterm: 'FOB',
+        containers: 1, containerType: "40'HQ",
+        blNumber: '', eta: '',
+        exchangeRate: 18.0,
+        date: '2026-08-15',
+        phase: 0,
+        phaseEnteredAt: '2026-08-15',
+        phaseLog: [ {phase:0, date:'2026-08-15'} ],
+        taxParams: { igi: 0.25, dta: 0.008, iva: 0.16, insurancePct: 0.0065 },
+        allocationMethod: 'fob',
+        items: [
+          {id:'i5', productId:'p5', qty:1000, fobUnit:2.00, weight:0},
+        ],
+        costItems: [
+          {id:'c11', name:'Flete Marítimo (estimado)', code:'OCEAN', basis:'per_container', rate:7100, qty:1, includeInCIF:true},
+        ],
+        extraCosts: [],
+        payments: [
+          {id:'pay3', concept:'anticipo_fob', pct:0.30, amount: 1000*2.00*0.30, dueDate:'2026-08-15', paidDate:'2026-08-15', status:'pagado'},
+          {id:'pay4', concept:'saldo_fob', pct:0.70, amount: 1000*2.00*0.70, dueDate:'2026-09-20', paidDate:null, status:'pendiente'},
+        ],
+        estimateSnapshot: null
+      }
+    ]
+  };
+}
+
+async function loadState(){
+  try{
+    const res = await window.storage.get(STORE_KEY, false);
+    if(res && res.value){ STATE = JSON.parse(res.value); return; }
+  }catch(e){ /* not found */ }
+  STATE = seedState();
+  await saveState();
+}
+async function saveState(){
+  try{ await window.storage.set(STORE_KEY, JSON.stringify(STATE), false); }
+  catch(e){ console.error('storage error', e); }
+}
+function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
+function isAdmin(){ return STATE.role !== 'socio'; }
+function dis(){ return isAdmin() ? '' : 'disabled'; }
+function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+let openMenu = null; // e.g. 'kebab-s1' or 'report-s1' or 'prod-p1'
+function toggleMenu(id){ openMenu = (openMenu===id) ? null : id; render(); }
+function productHasHistory(productId){
+  return STATE.shipments.some(sh=> sh.items.some(it=>it.productId===productId));
+}
+
+/* =========================================================
+   MOTOR DE CÁLCULO
+========================================================= */
+function computeCore(fobTotal, items, costItems, taxParams, allocationMethod, extraCosts, exchangeRate){
+  extraCosts = extraCosts||[];
+  const amounts = {};
+  costItems.forEach(ci=>{
+    let amt = 0;
+    if(ci.basis==='flat') amt = ci.rate;
+    else if(['per_container','per_hbl','per_piece'].includes(ci.basis)) amt = ci.rate*ci.qty;
+    else if(ci.basis==='pct_fob') amt = ci.rate*fobTotal;
+    amounts[ci.id] = amt;
+  });
+  const cifComponents = costItems.filter(ci=> ci.includeInCIF && ['flat','per_container','per_hbl','per_piece','pct_fob'].includes(ci.basis));
+  const cifExtra = cifComponents.reduce((a,ci)=>a+amounts[ci.id],0);
+  const cif = fobTotal + cifExtra;
+  costItems.forEach(ci=>{ if(ci.basis==='pct_cif') amounts[ci.id] = ci.rate*cif; });
+  const igi = taxParams.igi*cif;
+  const dta = taxParams.dta*cif;
+  const ivaBase = cif+igi+dta;
+  const iva = taxParams.iva*ivaBase;
+  const taxesTotal = igi+dta+iva;
+  costItems.forEach(ci=>{ if(ci.basis==='pct_taxes') amounts[ci.id] = ci.rate*taxesTotal; });
+
+  const baseLogistics = costItems.reduce((a,ci)=> ci.isRealExpense===false ? a : a+(amounts[ci.id]||0), 0);
+
+  const toUSD = ec => ec.currency==='MXN' ? ec.amount/(exchangeRate||1) : ec.amount;
+  const extraGeneral = extraCosts.filter(ec=>!ec.productId).reduce((a,ec)=>a+toUSD(ec),0);
+  const extraByProduct = {};
+  extraCosts.filter(ec=>ec.productId).forEach(ec=>{ extraByProduct[ec.productId] = (extraByProduct[ec.productId]||0) + toUSD(ec); });
+  const extraTotal = extraGeneral + Object.values(extraByProduct).reduce((a,v)=>a+v,0);
+
+  const logisticsTotal = baseLogistics + extraTotal;
+  const landedTotal = fobTotal + logisticsTotal + taxesTotal;
+
+  let basisFn;
+  if(allocationMethod==='qty') basisFn = it=>it.qty;
+  else if(allocationMethod==='weight') basisFn = it=>(it.weight||0)*it.qty;
+  else if(allocationMethod==='manual') basisFn = it=> (it.manualPct||0);
+  else basisFn = it=> it.qty*it.fobUnit;
+
+  const basisTotal = items.reduce((a,it)=>a+basisFn(it),0) || 1;
+  const perProduct = items.map(it=>{
+    const share = basisFn(it)/basisTotal;
+    const fob = it.qty*it.fobUnit;
+    const logistics = baseLogistics*share + extraGeneral*share + (extraByProduct[it.productId]||0);
+    const taxes = taxesTotal*share;
+    const total = fob+logistics+taxes;
+    return { itemId: it.id, productId: it.productId, qty: it.qty, fobUnit: it.fobUnit,
+      share, fob, logistics, taxes, total, unitCost: it.qty? total/it.qty : 0 };
+  });
+
+  return { fobTotal, amounts, cif, igi, dta, iva, taxesTotal, baseLogistics, extraTotal, logisticsTotal, landedTotal, perProduct, cifExtra };
+}
+
+function computeShipment(sh){
+  const fobTotal = sh.items.reduce((a,it)=>a + it.qty*it.fobUnit, 0);
+  const real = computeCore(fobTotal, sh.items, sh.costItems, sh.taxParams, sh.allocationMethod, sh.extraCosts, sh.exchangeRate);
+
+  let estimated;
+  if(sh.estimateSnapshot){
+    estimated = sh.estimateSnapshot;
+  } else {
+    estimated = computeCore(fobTotal, sh.items, sh.costItems, sh.taxParams, sh.allocationMethod, [], sh.exchangeRate);
+  }
+  const diff = real.landedTotal - estimated.landedTotal;
+  const diffPct = estimated.landedTotal ? (diff/estimated.landedTotal*100) : 0;
+
+  return { ...real, estimated, diff, diffPct };
+}
+
+function fmt(n, d=2){ return (n||0).toLocaleString('es-MX', {minimumFractionDigits:d, maximumFractionDigits:d}); }
+function usd(n){ return '$'+fmt(n)+' USD'; }
+function mxn(n){ return '$'+fmt(n)+' MXN'; }
+function pct(n){ return (n>=0?'+':'')+fmt(n,1)+'%'; }
+function diffBadge(diff, diffPct){
+  const cls = Math.abs(diff)<0.01 ? 'flat' : (diff>0?'up':'down');
+  return `<span class="diff-badge ${cls}">${diff>=0?'+':''}${usd(diff)} (${pct(diffPct)})</span>`;
+}
+
+/* =========================================================
+   REPORTES DE EMBARQUE (PDF vía impresión / Excel)
+========================================================= */
+function buildReportHTML(sh){
+  const r = computeShipment(sh);
+  const productName = pid => (STATE.products.find(p=>p.id===pid)||{}).name || '—';
+  const productSku = pid => (STATE.products.find(p=>p.id===pid)||{}).sku || '—';
+
+  const productRows = sh.items.map(it=>{
+    const real = r.perProduct.find(x=>x.itemId===it.id);
+    const est = r.estimated.perProduct.find(x=>x.itemId===it.id) || real;
+    return `<tr><td>${productName(it.productId)}</td><td>${productSku(it.productId)}</td>
+      <td style="text-align:right">${fmt(it.qty,0)}</td><td style="text-align:right">${usd(it.fobUnit)}</td>
+      <td style="text-align:right">${usd(est.unitCost)}</td><td style="text-align:right">${usd(real.unitCost)}</td>
+      <td style="text-align:right">${usd(real.total)}</td></tr>`;
+  }).join('');
+
+  const costRows = sh.costItems.map(ci=>`<tr><td>${ci.name}</td><td style="text-align:right">${usd(r.amounts[ci.id]||0)}</td></tr>`).join('');
+  const extraRows = (sh.extraCosts||[]).map(ec=>`<tr><td>${ec.concept} <span style="color:#888">(${ec.category})</span></td><td style="text-align:right">${ec.currency==='MXN'?mxn(ec.amount):usd(ec.amount)}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Sin costos extraordinarios</td></tr>';
+
+  const totalPaid = (sh.payments||[]).filter(p=>p.status==='pagado').reduce((a,p)=>a+p.amount,0);
+  const totalOrder = (sh.payments||[]).reduce((a,p)=>a+p.amount,0);
+  const nextPending = (sh.payments||[]).filter(p=>p.status==='pendiente').sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate))[0];
+  const paymentRows = (sh.payments||[]).map(p=>`<tr><td>${paymentLabel(p)}</td><td style="text-align:right">${(p.pct*100).toFixed(0)}%</td><td style="text-align:right">${usd(p.amount)}</td><td>${p.dueDate}</td><td>${p.status==='pagado'?'Pagado':'Pendiente'}</td></tr>`).join('');
+
+  const phaseRows = (sh.phaseLog||[]).map(pl=>`<tr><td>Fase ${pl.phase} — ${PHASES[pl.phase]}</td><td>${pl.date}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Sin historial de fases registrado</td></tr>';
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+  <title>Reporte — ${sh.number}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body{font-family:'Inter',Arial,sans-serif;color:#151b26;margin:0;padding:36px;font-size:12.5px;}
+    h1{font-family:'Manrope',sans-serif;font-size:22px;margin:0;}
+    h2{font-family:'Manrope',sans-serif;font-size:14px;margin:26px 0 8px;border-bottom:2px solid #151b26;padding-bottom:4px;}
+    .sub{color:#69707d;font-size:12px;margin-top:4px;}
+    table{width:100%;border-collapse:collapse;margin-top:6px;}
+    th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#69707d;border-bottom:1px solid #ddd;padding:5px 6px;}
+    td{padding:6px;border-bottom:1px solid #eee;}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-top:6px;}
+    .grid div span{color:#69707d;display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;}
+    .total-row td{font-weight:700;border-top:2px solid #151b26;}
+    .header-row{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c2703c;padding-bottom:14px;}
+    @media print{ body{padding:14px;} }
+  </style></head><body>
+    <div class="header-row">
+      <div><h1>ORMO Productos Especializados</h1><div class="sub">Reporte de embarque — generado ${todayStr()}</div></div>
+      <div style="text-align:right"><div style="font-family:'Manrope',sans-serif;font-weight:800;font-size:16px">${sh.number}</div><div class="sub">Fase actual: ${PHASES[sh.phase]}</div></div>
+    </div>
+
+    <h2>Información general</h2>
+    <div class="grid">
+      <div><span>Proveedor</span>${sh.supplierName||'—'}</div>
+      <div><span>Fecha</span>${sh.date}</div>
+      <div><span>Contenedores</span>${sh.containers} × ${sh.containerType}</div>
+      <div><span>Incoterm</span>${sh.incoterm}</div>
+      <div><span>Puerto origen</span>${sh.originPort||'—'}</div>
+      <div><span>Puerto destino</span>${sh.destPort||'—'}</div>
+      <div><span>BL / HBL</span>${sh.blNumber||'—'}</div>
+      <div><span>ETA</span>${sh.eta||'—'}</div>
+    </div>
+
+    <h2>Información financiera</h2>
+    <table><tr><th>Concepto</th><th style="text-align:right">Importe</th></tr>
+      <tr><td>Valor mercancía (FOB)</td><td style="text-align:right">${usd(r.fobTotal)}</td></tr>
+      ${costRows}
+      <tr><td>IGI</td><td style="text-align:right">${usd(r.igi)}</td></tr>
+      <tr><td>DTA</td><td style="text-align:right">${usd(r.dta)}</td></tr>
+      <tr><td>IVA</td><td style="text-align:right">${usd(r.iva)}</td></tr>
+    </table>
+    <h2 style="border:none;margin-top:14px;font-size:12.5px;">Costos extraordinarios</h2>
+    <table>${extraRows}</table>
+    <table style="margin-top:10px;">
+      <tr class="total-row"><td>Costo total estimado</td><td style="text-align:right">${usd(r.estimated.landedTotal)}</td></tr>
+      <tr class="total-row"><td>Costo total real</td><td style="text-align:right">${usd(r.landedTotal)}</td></tr>
+      <tr class="total-row"><td>Diferencia</td><td style="text-align:right">${r.diff>=0?'+':''}${usd(r.diff)} (${pct(r.diffPct)})</td></tr>
+    </table>
+
+    <h2>Productos</h2>
+    <table><tr><th>Producto</th><th>SKU</th><th style="text-align:right">Cant.</th><th style="text-align:right">FOB unit.</th><th style="text-align:right">Costo est. u.</th><th style="text-align:right">Costo real u.</th><th style="text-align:right">Costo total</th></tr>
+      ${productRows}
+    </table>
+
+    <h2>Pagos</h2>
+    <div class="grid">
+      <div><span>Monto total de la orden</span>${usd(totalOrder)}</div>
+      <div><span>Pagado a la fecha</span>${usd(totalPaid)}</div>
+      <div><span>Saldo</span>${usd(totalOrder-totalPaid)}</div>
+      <div><span>Próximo pago</span>${nextPending? nextPending.dueDate+' — '+usd(nextPending.amount) : 'Sin pagos pendientes'}</div>
+    </div>
+    <table style="margin-top:8px;"><tr><th>Concepto</th><th style="text-align:right">%</th><th style="text-align:right">Monto</th><th>Vencimiento</th><th>Estatus</th></tr>${paymentRows}</table>
+
+    <h2>Historial de fases</h2>
+    <table><tr><th>Fase</th><th>Fecha</th></tr>${phaseRows}</table>
+
+  </body></html>`;
+}
+
+function downloadReportPDF(shId){
+  const sh = STATE.shipments.find(s=>s.id===shId);
+  if(!sh) return;
+  const html = buildReportHTML(sh);
+  const w = window.open('', '_blank');
+  if(!w){ alert('El navegador bloqueó la ventana emergente. Habilítala para descargar el reporte.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ w.focus(); w.print(); }, 350);
+}
+
+function downloadReportExcel(shId){
+  const sh = STATE.shipments.find(s=>s.id===shId);
+  if(!sh) return;
+  const r = computeShipment(sh);
+  const productName = pid => (STATE.products.find(p=>p.id===pid)||{}).name || '—';
+
+  const wsInfo = XLSX.utils.aoa_to_sheet([
+    ['Reporte de embarque', sh.number],
+    ['Proveedor', sh.supplierName],
+    ['Fecha', sh.date],
+    ['Contenedores', `${sh.containers} × ${sh.containerType}`],
+    ['Incoterm', sh.incoterm],
+    ['Puerto origen', sh.originPort],
+    ['Puerto destino', sh.destPort],
+    ['BL/HBL', sh.blNumber||''],
+    ['ETA', sh.eta||''],
+    ['Fase actual', PHASES[sh.phase]],
+  ]);
+  const wsFin = XLSX.utils.aoa_to_sheet([
+    ['Concepto','Importe USD'],
+    ['Valor mercancía (FOB)', r.fobTotal],
+    ...sh.costItems.map(ci=>[ci.name, r.amounts[ci.id]||0]),
+    ['IGI', r.igi], ['DTA', r.dta], ['IVA', r.iva],
+    ['Costo total estimado', r.estimated.landedTotal],
+    ['Costo total real', r.landedTotal],
+    ['Diferencia', r.diff],
+  ]);
+  const wsExtra = XLSX.utils.aoa_to_sheet([
+    ['Concepto','Categoría','Monto','Moneda','Fecha'],
+    ...(sh.extraCosts||[]).map(ec=>[ec.concept, ec.category, ec.amount, ec.currency, ec.date])
+  ]);
+  const wsProd = XLSX.utils.aoa_to_sheet([
+    ['Producto','SKU','Cantidad','FOB unit.','Costo est. unit.','Costo real unit.','Costo total'],
+    ...sh.items.map(it=>{
+      const real = r.perProduct.find(x=>x.itemId===it.id);
+      const est = r.estimated.perProduct.find(x=>x.itemId===it.id) || real;
+      return [productName(it.productId), (STATE.products.find(p=>p.id===it.productId)||{}).sku, it.qty, it.fobUnit, est.unitCost, real.unitCost, real.total];
+    })
+  ]);
+  const wsPay = XLSX.utils.aoa_to_sheet([
+    ['Concepto','%','Monto','Vencimiento','Estatus'],
+    ...(sh.payments||[]).map(p=>[paymentLabel(p), p.pct, p.amount, p.dueDate, p.status])
+  ]);
+  const wsPhase = XLSX.utils.aoa_to_sheet([
+    ['Fase','Fecha'],
+    ...(sh.phaseLog||[]).map(pl=>[`Fase ${pl.phase} — ${PHASES[pl.phase]}`, pl.date])
+  ]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'Info general');
+  XLSX.utils.book_append_sheet(wb, wsFin, 'Financiero');
+  XLSX.utils.book_append_sheet(wb, wsExtra, 'Costos extra');
+  XLSX.utils.book_append_sheet(wb, wsProd, 'Productos');
+  XLSX.utils.book_append_sheet(wb, wsPay, 'Pagos');
+  XLSX.utils.book_append_sheet(wb, wsPhase, 'Fases');
+  XLSX.writeFile(wb, `Reporte_${sh.number.replace(/[^a-z0-9]+/gi,'_')}.xlsx`);
+}
+
+/* =========================================================
+   ALERTAS
+========================================================= */
+function computeAlerts(){
+  const alerts = [];
+  const cfg = STATE.alertConfig;
+  const today = todayStr();
+  STATE.shipments.forEach(sh=>{
+    (sh.payments||[]).forEach(p=>{
+      if(p.status==='pendiente'){
+        const d = daysBetween(today, p.dueDate);
+        if(d < 0) alerts.push({level:'red', text:`Pago vencido: "${paymentLabel(p)}" de ${sh.number} (${sh.supplierName}) — venció hace ${Math.abs(d)} día(s).`});
+        else if(d <= cfg.paymentSoonDays) alerts.push({level:'amber', text:`Pago próximo: "${paymentLabel(p)}" de ${sh.number} en ${d} día(s) — ${usd(p.amount)}.`});
+      }
+    });
+    const daysInPhase = daysBetween(sh.phaseEnteredAt||sh.date, today);
+    if(daysInPhase > cfg.phaseMaxDays && sh.phase < 4){
+      alerts.push({level:'amber', text:`${sh.number} lleva ${daysInPhase} días en fase "${PHASES[sh.phase]}" (umbral: ${cfg.phaseMaxDays}).`});
+    }
+    const r = computeShipment(sh);
+    if(r.diff > 0.01){
+      alerts.push({level:'red', text:`${sh.number}: costo real superó el estimado por ${usd(r.diff)} (${pct(r.diffPct)}).`});
+    }
+    (sh.extraCosts||[]).forEach(ec=>{
+      if(ec.amount >= cfg.extraCostThreshold){
+        alerts.push({level:'amber', text:`Costo extraordinario en ${sh.number}: "${ec.concept}" por ${ec.currency==='MXN'?mxn(ec.amount):usd(ec.amount)}.`});
+      }
+    });
+  });
+  return alerts;
+}
+
+/* =========================================================
+   RENDER / ROUTER
+========================================================= */
+let currentView = 'dashboard';
+let selectedShipmentId = null;
+let simOverrides = {};
+
+function setView(v){ currentView=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v)); render(); }
+
+document.getElementById('nav').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-view]');
+  if(btn) setView(btn.dataset.view);
+});
+
+function render(){
+  const main = document.getElementById('main');
+  if(currentView==='dashboard') main.innerHTML = renderDashboard();
+  else if(currentView==='products') main.innerHTML = renderProducts();
+  else if(currentView==='suppliers') main.innerHTML = renderDirectory('suppliers');
+  else if(currentView==='forwarders') main.innerHTML = renderDirectory('forwarders');
+  else if(currentView==='shipments') main.innerHTML = renderShipments();
+  else if(currentView==='payments') main.innerHTML = renderPayments();
+  else if(currentView==='params') main.innerHTML = renderParams();
+  else if(currentView==='simulator') main.innerHTML = renderSimulator();
+  document.getElementById('role-select').value = STATE.role;
+  document.getElementById('role-note').textContent = isAdmin()
+    ? 'Puede editar productos, proveedores, forwarders, embarques, pagos y parámetros.'
+    : 'Solo lectura + simulador. No modifica datos oficiales.';
+  attachHandlers();
+}
+
+/* ---------- DASHBOARD ---------- */
+function renderDashboard(){
+  const results = STATE.shipments.map(sh=>({sh, r: computeShipment(sh)}));
+  const totalFOB = results.reduce((a,x)=>a+x.r.fobTotal,0);
+  const totalLog = results.reduce((a,x)=>a+x.r.logisticsTotal,0);
+  const totalTax = results.reduce((a,x)=>a+x.r.taxesTotal,0);
+  const totalRealLanded = results.reduce((a,x)=>a+x.r.landedTotal,0);
+  const totalEstLanded = results.reduce((a,x)=>a+x.r.estimated.landedTotal,0);
+  const nContainers = STATE.shipments.reduce((a,s)=>a+s.containers,0);
+  const phaseCounts = [0,0,0,0,0];
+  STATE.shipments.forEach(s=>{ phaseCounts[s.phase] = (phaseCounts[s.phase]||0) + s.containers; });
+  const allPerProduct = results.flatMap(x=>x.r.perProduct);
+  const allPerProductEst = results.flatMap(x=>x.r.estimated.perProduct);
+  const avgUnitReal = allPerProduct.length? allPerProduct.reduce((a,p)=>a+p.unitCost,0)/allPerProduct.length : 0;
+  const avgUnitEst = allPerProductEst.length? allPerProductEst.reduce((a,p)=>a+p.unitCost,0)/allPerProductEst.length : 0;
+
+  // Próximo pago
+  const pending = [];
+  STATE.shipments.forEach(sh=>{
+    (sh.payments||[]).filter(p=>p.status==='pendiente').forEach(p=>{
+      pending.push({ sh, p, days: daysBetween(todayStr(), p.dueDate) });
+    });
+  });
+  pending.sort((a,b)=>a.days-b.days);
+  const nextPay = pending[0];
+
+  const alerts = computeAlerts();
+
+  const segs = [
+    {label:'Mercancía', val: totalFOB, color:'#183353'},
+    {label:'Logística', val: totalLog, color:'#c07a3e'},
+    {label:'Impuestos', val: totalTax, color:'#b23b3b'},
+  ];
+  const segTotal = segs.reduce((a,s)=>a+s.val,0) || 1;
+
+  return `
+    <h2 class="page-title">Dashboard</h2>
+    <div class="page-sub">Vista ejecutiva — ${STATE.shipments.length} embarque(s) registrado(s)</div>
+
+    <div class="card">
+      <h3>Próximo pago</h3>
+      ${nextPay ? `
+        <div class="grid-5">
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Fecha</div><div style="font-weight:700">${nextPay.p.dueDate}</div></div>
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Monto</div><div style="font-weight:700">${usd(nextPay.p.amount)}</div></div>
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Proveedor</div><div>${nextPay.sh.supplierName}</div></div>
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Embarque</div><div>${nextPay.sh.number}</div></div>
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Días restantes</div><div style="font-weight:700;color:${nextPay.days<0?'var(--warn)':'var(--ink)'}">${nextPay.days<0? 'Vencido hace '+Math.abs(nextPay.days)+' d' : nextPay.days+' días'}</div></div>
+        </div>
+      ` : `<div class="empty">Sin pagos pendientes registrados.</div>`}
+    </div>
+
+    <div class="grid-kpi">
+      <div class="kpi"><div class="eyebrow">Total contenedores</div><div class="val">${nContainers}</div></div>
+      ${[0,1,2,3,4].map(i=>`<div class="kpi"><div class="eyebrow">Fase ${i}</div><div class="val small">${phaseCounts[i]||0}<span style="font-size:11px;color:var(--ink-soft)"> · ${PHASES[i]}</span></div></div>`).join('')}
+    </div>
+
+    <div class="grid-kpi">
+      <div class="kpi"><div class="eyebrow">Costo FOB</div><div class="val">${usd(totalFOB)}</div></div>
+      <div class="kpi"><div class="eyebrow">Flete + gastos import.</div><div class="val">${usd(totalLog)}</div></div>
+      <div class="kpi"><div class="eyebrow">Costo estimado total</div><div class="val">${usd(totalEstLanded)}</div></div>
+      <div class="kpi"><div class="eyebrow">Costo real total</div><div class="val accent">${usd(totalRealLanded)}</div></div>
+    </div>
+    <div class="grid-kpi">
+      <div class="kpi"><div class="eyebrow">Costo unitario estimado (prom.)</div><div class="val">${usd(avgUnitEst)}</div></div>
+      <div class="kpi"><div class="eyebrow">Costo unitario real (prom.)</div><div class="val accent">${usd(avgUnitReal)}</div></div>
+      <div class="kpi"><div class="eyebrow">Total impuestos</div><div class="val">${usd(totalTax)}</div></div>
+      <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge(totalRealLanded-totalEstLanded, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0)}</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Alertas <small>${alerts.length} activa(s)</small></h3>
+      ${alerts.length? alerts.map(a=>`<div class="alert-item"><span class="alert-dot ${a.level}"></span><span>${a.text}</span></div>`).join('') : `<div class="empty">Sin alertas activas.</div>`}
+    </div>
+
+    <div class="card">
+      <h3>¿A dónde se va el dinero? <small>USD</small></h3>
+      <div class="bar-track">
+        ${segs.map(s=>`<div class="bar-seg" style="width:${(s.val/segTotal*100).toFixed(1)}%;background:${s.color}"></div>`).join('')}
+      </div>
+      <div class="legend">
+        ${segs.map(s=>`<span><span class="dot" style="background:${s.color}"></span>${s.label}: ${usd(s.val)} (${(s.val/segTotal*100).toFixed(1)}%)</span>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Embarques</h3>
+      <table>
+        <tr><th>Embarque</th><th>Fase</th><th>Proveedor</th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th></tr>
+        ${results.map(({sh,r})=>`
+          <tr>
+            <td>${sh.number}</td>
+            <td><span class="pill blue">${PHASES[sh.phase]}</span></td>
+            <td>${sh.supplierName}</td>
+            <td class="num-cell">${usd(r.estimated.landedTotal)}</td>
+            <td class="num-cell">${usd(r.landedTotal)}</td>
+            <td class="num-cell">${diffBadge(r.diff, r.diffPct)}</td>
+          </tr>`).join('')}
+      </table>
+    </div>
+  `;
+}
+
+/* ---------- PRODUCTOS ---------- */
+function renderProducts(){
+  const rows = STATE.products.map(p=>{
+    const history = [];
+    STATE.shipments.forEach(sh=>{
+      sh.items.filter(it=>it.productId===p.id).forEach(it=>{
+        const r = computeShipment(sh);
+        const ppReal = r.perProduct.find(x=>x.itemId===it.id);
+        const ppEst = r.estimated.perProduct.find(x=>x.itemId===it.id) || ppReal;
+        history.push({date: sh.date, shipment: sh.number, supplier: sh.supplierName, fobUnit: it.fobUnit,
+          estUnit: ppEst?ppEst.unitCost:0, realUnit: ppReal?ppReal.unitCost:0});
+      });
+    });
+    const latest = history[history.length-1];
+    return {p, history, latest};
+  });
+
+  return `
+    <h2 class="page-title">Catálogo de productos</h2>
+    <div class="page-sub">Comparación rápida y evolución de costo estimado vs. real por embarque</div>
+
+    <div class="card">
+      <h3>Comparación general
+        <span class="row">
+          <button class="btn small" id="btn-add-product" ${dis()}>+ Agregar producto</button>
+          <button class="btn small ghost" id="btn-import-excel" ${dis()}>Importar Excel</button>
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display:none" ${dis()}/>
+        </span>
+      </h3>
+      <table>
+        <tr><th>Producto</th><th>Proveedor</th><th class="num-cell">Precio FOB</th><th class="num-cell">Costo GDL aprox.</th><th class="num-cell">Costo real</th><th>Estado</th><th></th></tr>
+        ${rows.map(({p,latest})=>{
+          const menuId = 'prod-'+p.id;
+          const hasHist = productHasHistory(p.id);
+          const isArchived = p.status==='archived';
+          return `
+          <tr style="${isArchived?'opacity:.55':''}">
+            <td>${p.name} <span class="pill gray">${p.sku}</span></td>
+            <td>${p.supplier||'—'}</td>
+            <td class="num-cell">${latest?usd(latest.fobUnit):'—'}</td>
+            <td class="num-cell">${latest?usd(latest.estUnit):'—'}</td>
+            <td class="num-cell">${latest?usd(latest.realUnit):'—'}</td>
+            <td><span class="pill ${isArchived?'gray':'green'}">${isArchived?'Archivado':'Activo'}</span></td>
+            <td class="actions-cell">
+              <div class="menu-wrap">
+                <button class="kebab-btn" data-menu-toggle="${menuId}">⋯</button>
+                <div class="menu-dropdown" style="display:${openMenu===menuId?'block':'none'}">
+                  <button data-view-history="${p.id}">Ver historial</button>
+                  ${isAdmin() ? `
+                    <button data-toggle-status="${p.id}">${isArchived?'Reactivar':'Desactivar'}</button>
+                    <div class="menu-sep"></div>
+                    <button class="danger" data-delete-product="${p.id}">Eliminar</button>
+                  ` : ''}
+                </div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+
+    ${rows.map(({p,history})=>`
+      <div class="card" id="product-history-${p.id}">
+        <h3>${p.name} <small>${p.sku} · ${p.fraction||'sin fracción'} · ${p.supplier||'sin proveedor'}</small></h3>
+        ${history.length? `
+        <table>
+          <tr><th>Fecha</th><th>Embarque</th><th class="num-cell">Precio FOB</th><th class="num-cell">Costo estimado</th><th class="num-cell">Costo real</th></tr>
+          ${history.map(h=>`<tr><td>${h.date}</td><td>${h.shipment}</td><td class="num-cell">${usd(h.fobUnit)}</td><td class="num-cell">${usd(h.estUnit)}</td><td class="num-cell">${usd(h.realUnit)}</td></tr>`).join('')}
+        </table>` : `<div class="empty">Sin movimientos registrados todavía.</div>`}
+      </div>
+    `).join('')}
+  `;
+}
+
+/* ---------- PROVEEDORES / FORWARDERS (directorio genérico) ---------- */
+function renderDirectory(kind){
+  const isSupplier = kind==='suppliers';
+  const label = isSupplier ? 'Proveedor' : 'Forwarder';
+  const labelPlural = isSupplier ? 'Proveedores' : 'Forwarders';
+  const list = STATE[kind];
+
+  return `
+    <h2 class="page-title">${labelPlural}</h2>
+    <div class="page-sub">Alta, edición y estatus de ${labelPlural.toLowerCase()}</div>
+
+    <div class="card">
+      <h3>Directorio
+        <button class="btn small" data-add-directory="${kind}" ${dis()}>+ Agregar ${label.toLowerCase()}</button>
+      </h3>
+      ${list.length? `
+      <table>
+        <tr><th>Nombre / Razón social</th><th>País</th><th>Contacto</th><th>Teléfono</th><th>Correo</th><th>Dirección</th><th>Observaciones</th><th>Estatus</th><th></th></tr>
+        ${list.map(x=>{
+          const menuId = 'dir-'+kind+'-'+x.id;
+          const isInactive = x.status==='inactive';
+          return `<tr style="${isInactive?'opacity:.55':''}">
+            <td><input data-dir-field="name" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.name}" ${dis()}/></td>
+            <td><input data-dir-field="country" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.country||''}" ${dis()} style="width:100px"/></td>
+            <td><input data-dir-field="contact" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.contact||''}" ${dis()} style="width:110px"/></td>
+            <td><input data-dir-field="phone" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.phone||''}" ${dis()} style="width:100px"/></td>
+            <td><input data-dir-field="email" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.email||''}" ${dis()} style="width:130px"/></td>
+            <td><input data-dir-field="address" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.address||''}" ${dis()} style="width:140px"/></td>
+            <td><input data-dir-field="notes" data-dir-kind="${kind}" data-dir-id="${x.id}" value="${x.notes||''}" ${dis()} style="width:140px"/></td>
+            <td><span class="pill ${isInactive?'gray':'green'}">${isInactive?'Inactivo':'Activo'}</span></td>
+            <td class="actions-cell">
+              <div class="menu-wrap">
+                <button class="kebab-btn" data-menu-toggle="${menuId}">⋯</button>
+                <div class="menu-dropdown" style="display:${openMenu===menuId?'block':'none'}">
+                  ${isAdmin() ? `
+                    <button data-toggle-dir-status="${kind}:${x.id}">${isInactive?'Reactivar':'Desactivar'}</button>
+                    <div class="menu-sep"></div>
+                    <button class="danger" data-delete-dir="${kind}:${x.id}">Eliminar</button>
+                  ` : `<button disabled>Solo lectura</button>`}
+                </div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>` : `<div class="empty">Sin ${labelPlural.toLowerCase()} registrados todavía.</div>`}
+    </div>
+  `;
+}
+
+/* ---------- EMBARQUES ---------- */
+function renderShipments(){
+  if(!selectedShipmentId && STATE.shipments.length) selectedShipmentId = STATE.shipments[0].id;
+  const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+  const r = sh ? computeShipment(sh) : null;
+
+  return `
+    <h2 class="page-title">Embarques</h2>
+    <div class="page-sub">Fase, mercancía, costos, pagos y trazabilidad completa</div>
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:20px;">
+      <div>
+        <button class="btn small" id="btn-new-shipment" style="margin-bottom:12px;width:100%;" ${dis()}>+ Nuevo embarque</button>
+        ${STATE.shipments.map(s=>{
+          const menuId = 'kebab-'+s.id;
+          return `
+          <div class="shipment-list-item ${s.id===selectedShipmentId?'active':''}">
+            <div data-select-shipment="${s.id}" style="cursor:pointer;">
+              <div class="title">${s.number}</div>
+              <div class="meta">${s.date} · ${s.containers}×${s.containerType}</div>
+              <div style="margin-top:6px;"><span class="pill blue">${PHASES[s.phase]}</span></div>
+            </div>
+            <div class="list-actions">
+              <div class="menu-wrap">
+                <button class="kebab-btn" data-menu-toggle="${menuId}">⋯</button>
+                <div class="menu-dropdown" style="display:${openMenu===menuId?'block':'none'}">
+                  <button data-report-pdf="${s.id}">Descargar reporte (PDF)</button>
+                  <button data-report-xlsx="${s.id}">Descargar reporte (Excel)</button>
+                  ${isAdmin() ? `<div class="menu-sep"></div><button class="danger" data-del-shipment="${s.id}">Eliminar embarque</button>` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;}).join('')}
+      </div>
+      <div>
+        ${sh ? renderShipmentDetail(sh, r) : '<div class="empty">Selecciona o crea un embarque</div>'}
+      </div>
+    </div>
+  `;
+}
+
+function renderShipmentDetail(sh, r){
+  const productName = pid => (STATE.products.find(p=>p.id===pid)||{}).name || '—';
+  const excelDeltaNote = sh.id==='s1' ? `<div class="info-note">Replica la Cotización ORMO original con tipo de cambio 18.0 (confirmado).</div>` : '';
+  const daysInPhase = daysBetween(sh.phaseEnteredAt||sh.date, todayStr());
+
+  return `
+    ${excelDeltaNote}
+
+    <div class="card">
+      <h3>${sh.number} <small>${sh.originPort} → ${sh.destPort}</small>
+        <span class="row-actions">
+          <button class="btn xs ghost" data-report-pdf="${sh.id}">Descargar reporte (PDF)</button>
+          <button class="btn xs ghost" data-report-xlsx="${sh.id}">Excel</button>
+        </span>
+      </h3>
+      <div class="grid-3">
+        <div class="field"><label>Proveedor</label>
+          <select data-sh-field="supplierName" ${dis()}>
+            <option value="">(sin asignar)</option>
+            ${STATE.suppliers.filter(s=>s.status!=='inactive' || s.name===sh.supplierName).map(s=>`<option value="${s.name}" ${s.name===sh.supplierName?'selected':''}>${s.name}${s.status==='inactive'?' (inactivo)':''}</option>`).join('')}
+            ${sh.supplierName && !STATE.suppliers.some(s=>s.name===sh.supplierName) ? `<option value="${sh.supplierName}" selected>${sh.supplierName} (sin registrar)</option>` : ''}
+          </select>
+        </div>
+        <div class="field"><label>Forwarder</label>
+          <select data-sh-field="forwarder" ${dis()}>
+            <option value="">(sin asignar)</option>
+            ${STATE.forwarders.filter(f=>f.status!=='inactive' || f.name===sh.forwarder).map(f=>`<option value="${f.name}" ${f.name===sh.forwarder?'selected':''}>${f.name}${f.status==='inactive'?' (inactivo)':''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Incoterm</label>
+          <select data-sh-field="incoterm" ${dis()}>
+            ${INCOTERMS.map(i=>`<option value="${i}" ${i===sh.incoterm?'selected':''}>${i}</option>`).join('')}
+            ${sh.incoterm && !INCOTERMS.includes(sh.incoterm) ? `<option value="${sh.incoterm}" selected>${sh.incoterm}</option>` : ''}
+          </select>
+        </div>
+        <div class="field"><label>Contenedores (#)</label>
+          <select data-sh-field="containers" ${dis()}>
+            ${Array.from({length:20},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===sh.containers?'selected':''}>${n}</option>`).join('')}
+            ${sh.containers>20 ? `<option value="${sh.containers}" selected>${sh.containers}</option>` : ''}
+          </select>
+        </div>
+        <div class="field"><label>Tipo contenedor</label><input data-sh-field="containerType" value="${sh.containerType}" ${dis()}/></div>
+        <div class="field"><label>Tipo de cambio MXN/USD</label><input type="number" step="0.01" data-sh-field="exchangeRate" value="${sh.exchangeRate}" ${dis()}/></div>
+        <div class="field"><label>BL / HBL</label><input data-sh-field="blNumber" value="${sh.blNumber||''}" ${dis()}/></div>
+        <div class="field"><label>ETA</label><input type="date" data-sh-field="eta" value="${sh.eta||''}" ${dis()}/></div>
+      </div>
+
+      <div class="field"><label>Fase actual (${daysInPhase} día(s) en esta fase)</label>
+        <select data-sh-field="phase" ${dis()}>
+          ${PHASES.map((p,i)=>`<option value="${i}" ${i===sh.phase?'selected':''}>Fase ${i} — ${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="phase-track">
+        ${PHASES.map((p,i)=>`<div class="phase-step ${i<sh.phase?'done':(i===sh.phase?'current':'')}"></div>`).join('')}
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px;">
+        <button class="icon-btn" data-del-shipment="${sh.id}" ${dis()}>eliminar embarque</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>① Mercancía — productos en este embarque
+        <button class="btn small ghost" data-add-item="${sh.id}" ${dis()}>+ producto</button>
+      </h3>
+      <table>
+        <tr><th>Producto</th><th class="num-cell">Cant.</th><th class="num-cell">FOB unit.</th><th class="num-cell">Peso (kg/u)</th><th class="num-cell">Total FOB</th><th></th></tr>
+        ${sh.items.map(it=>`
+          <tr>
+            <td><select data-item-field="productId" data-item-id="${it.id}" ${dis()}>
+              ${STATE.products.map(p=>`<option value="${p.id}" ${p.id===it.productId?'selected':''}>${p.name}</option>`).join('')}
+            </select></td>
+            <td class="num-cell"><input type="number" style="width:80px" data-item-field="qty" data-item-id="${it.id}" value="${it.qty}" ${dis()}/></td>
+            <td class="num-cell"><input type="number" step="0.01" style="width:80px" data-item-field="fobUnit" data-item-id="${it.id}" value="${it.fobUnit}" ${dis()}/></td>
+            <td class="num-cell"><input type="number" step="0.01" style="width:70px" data-item-field="weight" data-item-id="${it.id}" value="${it.weight||0}" ${dis()}/></td>
+            <td class="num-cell">${usd(it.qty*it.fobUnit)}</td>
+            <td><button class="icon-btn" data-del-item="${it.id}" ${dis()}>✕</button></td>
+          </tr>
+        `).join('')}
+        <tr class="total"><td colspan="4">TOTAL MERCANCÍA FOB</td><td class="num-cell">${usd(r.fobTotal)}</td><td></td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>③ Costos configurables del embarque
+        <button class="btn small ghost" data-add-cost="${sh.id}" ${dis()}>+ concepto</button>
+      </h3>
+      <table>
+        <tr><th>Concepto</th><th>Base</th><th class="num-cell">Tarifa</th><th class="num-cell">Cant./%</th><th>¿CIF?</th><th>¿Gasto real?</th><th class="num-cell">Importe</th><th></th></tr>
+        ${sh.costItems.map(ci=>{
+          const amt = r.amounts[ci.id]||0;
+          const isReal = ci.isRealExpense!==false;
+          return `<tr>
+            <td><input data-cost-field="name" data-cost-id="${ci.id}" value="${ci.name}" ${dis()}/></td>
+            <td><select data-cost-field="basis" data-cost-id="${ci.id}" ${dis()}>
+              ${['flat','per_container','per_hbl','per_piece','pct_fob','pct_cif','pct_taxes'].map(b=>`<option value="${b}" ${b===ci.basis?'selected':''}>${b}</option>`).join('')}
+            </select></td>
+            <td class="num-cell"><input type="number" step="0.0001" style="width:80px" data-cost-field="rate" data-cost-id="${ci.id}" value="${ci.rate}" ${dis()}/></td>
+            <td class="num-cell"><input type="number" step="0.01" style="width:60px" data-cost-field="qty" data-cost-id="${ci.id}" value="${ci.qty}" ${dis()}/></td>
+            <td><input type="checkbox" data-cost-field="includeInCIF" data-cost-id="${ci.id}" ${ci.includeInCIF?'checked':''} ${dis()}/></td>
+            <td><input type="checkbox" data-cost-field="isRealExpense" data-cost-id="${ci.id}" ${isReal?'checked':''} ${dis()}/></td>
+            <td class="num-cell">${usd(amt)}</td>
+            <td><button class="icon-btn" data-del-cost="${ci.id}" ${dis()}>✕</button></td>
+          </tr>`;
+        }).join('')}
+        <tr class="total"><td colspan="6">SUBTOTAL LOGÍSTICA BASE</td><td class="num-cell">${usd(r.baseLogistics)}</td><td></td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>⑤ Costos extraordinarios
+        <button class="btn small ghost" data-add-extra="${sh.id}" ${dis()}>+ Agregar costo extra</button>
+      </h3>
+      ${sh.extraCosts && sh.extraCosts.length ? `
+      <table>
+        <tr><th>Concepto</th><th>Categoría</th><th class="num-cell">Monto</th><th>Fecha</th><th>Producto</th><th>Notas</th><th></th></tr>
+        ${sh.extraCosts.map(ec=>`
+          <tr>
+            <td><input data-extra-field="concept" data-extra-id="${ec.id}" value="${ec.concept}" ${dis()}/></td>
+            <td><select data-extra-field="category" data-extra-id="${ec.id}" ${dis()}>
+              ${['Almacenamiento','Demoras','Maniobras','Descarga','Transporte adicional','Gastos portuarios','Gastos aduanales','Inspecciones','Otro'].map(c=>`<option ${c===ec.category?'selected':''}>${c}</option>`).join('')}
+            </select></td>
+            <td class="num-cell">
+              <input type="number" step="0.01" style="width:70px" data-extra-field="amount" data-extra-id="${ec.id}" value="${ec.amount}" ${dis()}/>
+              <select data-extra-field="currency" data-extra-id="${ec.id}" style="width:70px" ${dis()}>
+                <option ${ec.currency==='USD'?'selected':''}>USD</option><option ${ec.currency==='MXN'?'selected':''}>MXN</option>
+              </select>
+            </td>
+            <td><input type="date" data-extra-field="date" data-extra-id="${ec.id}" value="${ec.date}" ${dis()}/></td>
+            <td><select data-extra-field="productId" data-extra-id="${ec.id}" ${dis()}>
+              <option value="">(prorratear entre todos)</option>
+              ${sh.items.map(it=>`<option value="${it.productId}" ${ec.productId===it.productId?'selected':''}>${productName(it.productId)}</option>`).join('')}
+            </select></td>
+            <td><input data-extra-field="notes" data-extra-id="${ec.id}" value="${ec.notes||''}" ${dis()}/></td>
+            <td><button class="icon-btn" data-del-extra="${ec.id}" ${dis()}>✕</button></td>
+          </tr>
+        `).join('')}
+        <tr class="total"><td colspan="6">TOTAL COSTOS EXTRAORDINARIOS</td><td class="num-cell">${usd(r.extraTotal)}</td></tr>
+      </table>` : `<div class="empty">Sin costos extraordinarios registrados.</div>`}
+    </div>
+
+    <div class="card">
+      <h3>Pagos de este embarque
+        <button class="btn small ghost" data-add-payment="${sh.id}" ${dis()}>+ pago</button>
+      </h3>
+      <div class="info-note">Al elegir un concepto con base automática (FOB, Logística o Impuestos), el monto se calcula solo a partir del % que captures. "Otro" permite un monto libre.</div>
+      <table>
+        <tr><th>Concepto</th><th class="num-cell">Base</th><th class="num-cell">%</th><th class="num-cell">Monto</th><th>Vencimiento</th><th>Estatus</th><th></th></tr>
+        ${(sh.payments||[]).map(p=>{
+          const meta = PAYMENT_CONCEPTS[p.concept] || PAYMENT_CONCEPTS.otro;
+          const baseVal = meta.base ? paymentBaseValue(r, meta.base) : null;
+          return `
+          <tr>
+            <td><select data-payment-field="concept" data-payment-id="${p.id}" ${dis()}>
+              ${Object.entries(PAYMENT_CONCEPTS).map(([key,m])=>`<option value="${key}" ${key===p.concept?'selected':''}>${m.label}</option>`).join('')}
+            </select></td>
+            <td class="num-cell">${baseVal!=null? usd(baseVal) : '—'}</td>
+            <td class="num-cell"><input type="number" step="1" style="width:60px" data-payment-field="pct" data-payment-id="${p.id}" value="${(p.pct*100).toFixed(0)}" ${dis()}/>%</td>
+            <td class="num-cell"><input type="number" step="0.01" style="width:90px" data-payment-field="amount" data-payment-id="${p.id}" value="${p.amount.toFixed(2)}" ${(!isAdmin()||meta.base)?'disabled':''}/></td>
+            <td><input type="date" data-payment-field="dueDate" data-payment-id="${p.id}" value="${p.dueDate}" ${dis()}/></td>
+            <td><select data-payment-field="status" data-payment-id="${p.id}" ${dis()}>
+              <option value="pendiente" ${p.status==='pendiente'?'selected':''}>Pendiente</option>
+              <option value="pagado" ${p.status==='pagado'?'selected':''}>Pagado</option>
+            </select></td>
+            <td><button class="icon-btn" data-del-payment="${p.id}" ${dis()}>✕</button></td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>④ Valor en aduana e impuestos</h3>
+      <table>
+        <tr><td>Valor mercancía (FOB)</td><td class="num-cell">${usd(r.fobTotal)}</td></tr>
+        <tr><td>+ Componentes que entran a CIF</td><td class="num-cell">${usd(r.cifExtra)}</td></tr>
+        <tr class="total"><td>= VALOR EN ADUANA (CIF)</td><td class="num-cell">${usd(r.cif)}</td></tr>
+        <tr><td>IGI (${(sh.taxParams.igi*100).toFixed(2)}%)</td><td class="num-cell">${usd(r.igi)}</td></tr>
+        <tr><td>DTA (${(sh.taxParams.dta*100).toFixed(2)}%)</td><td class="num-cell">${usd(r.dta)}</td></tr>
+        <tr><td>IVA (${(sh.taxParams.iva*100).toFixed(2)}%)</td><td class="num-cell">${usd(r.iva)}</td></tr>
+        <tr class="total"><td>TOTAL IMPUESTOS</td><td class="num-cell">${usd(r.taxesTotal)}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>⑥ Resumen — estimado vs. real
+        <button class="btn small ghost" id="btn-freeze-estimate" data-freeze="${sh.id}" ${dis()}>Congelar estimado actual</button>
+      </h3>
+      <table>
+        <tr><th></th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th></tr>
+        <tr><td>Valor mercancía (FOB)</td><td class="num-cell">${usd(r.estimated.fobTotal)}</td><td class="num-cell">${usd(r.fobTotal)}</td><td class="num-cell">${diffBadge(r.fobTotal-r.estimated.fobTotal, 0)}</td></tr>
+        <tr><td>Logística (base + extra)</td><td class="num-cell">${usd(r.estimated.logisticsTotal)}</td><td class="num-cell">${usd(r.logisticsTotal)}</td><td class="num-cell">${diffBadge(r.logisticsTotal-r.estimated.logisticsTotal,0)}</td></tr>
+        <tr><td>Impuestos</td><td class="num-cell">${usd(r.estimated.taxesTotal)}</td><td class="num-cell">${usd(r.taxesTotal)}</td><td class="num-cell">${diffBadge(r.taxesTotal-r.estimated.taxesTotal,0)}</td></tr>
+        <tr class="total"><td>COSTO TOTAL PUESTO EN DESTINO</td><td class="num-cell">${usd(r.estimated.landedTotal)}</td><td class="num-cell">${usd(r.landedTotal)}</td><td class="num-cell">${diffBadge(r.diff, r.diffPct)}</td></tr>
+      </table>
+      ${sh.estimateSnapshot? `<div class="info-note" style="margin-top:10px;margin-bottom:0;">Estimado congelado. Los costos extraordinarios y ediciones posteriores solo afectan la columna "Real".</div>` : `<div class="info-note" style="margin-top:10px;margin-bottom:0;">Estimado aún no congelado — se calcula en vivo excluyendo costos extraordinarios. Congélalo cuando la cotización inicial esté lista.</div>`}
+    </div>
+
+    <div class="card">
+      <h3>⑦ Costo unitario por producto
+        <small>método:
+          <select data-sh-field="allocationMethod" style="font-family:inherit" ${dis()}>
+            <option value="fob" ${sh.allocationMethod==='fob'?'selected':''}>proporcional a FOB</option>
+            <option value="qty" ${sh.allocationMethod==='qty'?'selected':''}>proporcional a cantidad</option>
+            <option value="weight" ${sh.allocationMethod==='weight'?'selected':''}>proporcional a peso</option>
+          </select>
+        </small>
+      </h3>
+      <table>
+        <tr><th>Producto</th><th class="num-cell">% asignado</th><th class="num-cell">Costo est. / u</th><th class="num-cell">Costo real / u</th><th class="num-cell">Diferencia</th></tr>
+        ${r.perProduct.map(pp=>{
+          const ppEst = r.estimated.perProduct.find(x=>x.itemId===pp.itemId) || pp;
+          return `<tr>
+            <td>${productName(pp.productId)}</td>
+            <td class="num-cell">${(pp.share*100).toFixed(1)}%</td>
+            <td class="num-cell">${usd(ppEst.unitCost)}</td>
+            <td class="num-cell"><strong>${usd(pp.unitCost)}</strong></td>
+            <td class="num-cell">${diffBadge(pp.unitCost-ppEst.unitCost, ppEst.unitCost?(pp.unitCost-ppEst.unitCost)/ppEst.unitCost*100:0)}</td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Historial de fases</h3>
+      <table>
+        <tr><th>Fase</th><th>Fecha</th></tr>
+        ${(sh.phaseLog||[]).map(pl=>`<tr><td>Fase ${pl.phase} — ${PHASES[pl.phase]}</td><td>${pl.date}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Sin historial registrado</td></tr>'}
+      </table>
+    </div>
+  `;
+}
+
+/* ---------- PAGOS ---------- */
+function renderPayments(){
+  const rows = [];
+  STATE.shipments.forEach(sh=>{
+    (sh.payments||[]).forEach(p=>{
+      const productNames = sh.items.map(it=>(STATE.products.find(pr=>pr.id===it.productId)||{}).name).join(', ');
+      rows.push({sh, p, productNames});
+    });
+  });
+  rows.sort((a,b)=> (a.p.status==='pendiente'?0:1) - (b.p.status==='pendiente'?0:1) || new Date(a.p.dueDate)-new Date(b.p.dueDate));
+
+  return `
+    <h2 class="page-title">Pagos a proveedores</h2>
+    <div class="page-sub">Estado de anticipos y saldos por embarque</div>
+    <div class="card">
+      <table>
+        <tr><th>Proveedor</th><th>Embarque</th><th>Concepto</th><th>Producto</th><th class="num-cell">Monto</th><th>Vencimiento</th><th>Estatus</th></tr>
+        ${rows.map(({sh,p,productNames})=>{
+          const d = daysBetween(todayStr(), p.dueDate);
+          const overdue = p.status==='pendiente' && d<0;
+          return `<tr>
+            <td>${sh.supplierName}</td>
+            <td>${sh.number}</td>
+            <td>${paymentLabel(p)}</td>
+            <td>${productNames}</td>
+            <td class="num-cell">${usd(p.amount)}</td>
+            <td>${p.dueDate}</td>
+            <td><span class="pill ${p.status==='pagado'?'green':(overdue?'red':'amber')}">${p.status==='pagado'?'Pagado':(overdue?'Vencido':'Pendiente')}</span></td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  `;
+}
+
+/* ---------- PARÁMETROS ---------- */
+function renderParams(){
+  const tp = STATE.taxParams;
+  const cfg = STATE.alertConfig;
+  return `
+    <h2 class="page-title">Parámetros globales</h2>
+    <div class="page-sub">Valores por defecto para nuevos embarques. Cada embarque conserva su propia copia — cambiar esto no altera importaciones ya registradas.</div>
+    <div class="card">
+      <h3>Tasas fiscales por defecto</h3>
+      <div class="grid-4">
+        <div class="field"><label>IGI</label><input type="number" step="0.0001" id="param-igi" value="${tp.igi}" ${dis()}/></div>
+        <div class="field"><label>DTA</label><input type="number" step="0.0001" id="param-dta" value="${tp.dta}" ${dis()}/></div>
+        <div class="field"><label>IVA</label><input type="number" step="0.0001" id="param-iva" value="${tp.iva}" ${dis()}/></div>
+        <div class="field"><label>Seguro de carga (% FOB)</label><input type="number" step="0.0001" id="param-ins" value="${tp.insurancePct}" ${dis()}/></div>
+      </div>
+      <button class="btn" id="btn-save-params" ${dis()}>Guardar como valores por defecto</button>
+    </div>
+    <div class="card">
+      <h3>Umbrales de alertas</h3>
+      <div class="grid-3">
+        <div class="field"><label>Días máx. en una fase</label><input type="number" id="param-phasedays" value="${cfg.phaseMaxDays}" ${dis()}/></div>
+        <div class="field"><label>Días de aviso antes de pago</label><input type="number" id="param-paydays" value="${cfg.paymentSoonDays}" ${dis()}/></div>
+        <div class="field"><label>Umbral costo extraordinario (USD)</label><input type="number" id="param-extrathresh" value="${cfg.extraCostThreshold}" ${dis()}/></div>
+      </div>
+      <button class="btn" id="btn-save-alertcfg" ${dis()}>Guardar umbrales</button>
+    </div>
+    <div class="card">
+      <h3>Catálogo de productos</h3>
+      <table>
+        <tr><th>SKU</th><th>Nombre</th><th>Fracción</th><th>Proveedor</th></tr>
+        ${STATE.products.map(p=>`<tr><td>${p.sku}</td><td>${p.name}</td><td>${p.fraction||'—'}</td><td>${p.supplier||'—'}</td></tr>`).join('')}
+      </table>
+      <button class="btn small ghost" id="btn-add-product-2" style="margin-top:10px;" ${dis()}>+ agregar producto</button>
+    </div>
+  `;
+}
+
+/* ---------- SIMULADOR ---------- */
+function renderSimulator(){
+  if(!selectedShipmentId && STATE.shipments.length) selectedShipmentId = STATE.shipments[0].id;
+  const base = STATE.shipments.find(s=>s.id===selectedShipmentId);
+  if(!base) return '<div class="empty">Registra un embarque primero.</div>';
+
+  const o = simOverrides;
+  const sim = JSON.parse(JSON.stringify(base));
+  if(o.exchangeRate!=null) sim.exchangeRate = o.exchangeRate;
+  if(o.igi!=null) sim.taxParams.igi = o.igi;
+  if(o.freightAmount!=null){
+    const oceanBase = base.costItems.find(b=>b.code==='OCEAN');
+    sim.costItems.forEach(ci=>{ if(ci.code==='OCEAN'){ const perUnit = o.freightAmount/(ci.qty||1); ci.rate = perUnit; } });
+  }
+  if(o.containers!=null){
+    sim.containers = o.containers;
+    sim.costItems.forEach(ci=>{ if(ci.basis==='per_container') ci.qty = o.containers; });
+  }
+  if(o.fobUnit!=null && sim.items[0]){
+    sim.items.forEach(it=>{ it.fobUnit = o.fobUnit; });
+  }
+  if(o.extraAmount!=null){
+    sim.extraCosts = [...sim.extraCosts, {id:'sim-extra', concept:'Ajuste simulado', category:'Otro', amount:o.extraAmount, currency:'USD', date: todayStr(), productId:null}];
+  }
+
+  const rBase = computeShipment(base);
+  const rSim = computeShipment(sim);
+  const diffTotal = rSim.landedTotal - rBase.landedTotal;
+
+  const productName = pid => (STATE.products.find(p=>p.id===pid)||{}).name || '—';
+  const oceanItem = base.costItems.find(c=>c.code==='OCEAN');
+  const currentFreight = oceanItem ? oceanItem.rate*oceanItem.qty : 0;
+  const currentFOB = base.items[0] ? base.items[0].fobUnit : 0;
+
+  return `
+    <h2 class="page-title">Simulador de escenarios</h2>
+    <div class="page-sub">Cambios aquí son temporales — nunca modifican los datos oficiales del embarque</div>
+
+    <div class="card">
+      <h3>Embarque base: ${base.number}</h3>
+      <div class="grid-3">
+        <div class="field"><label>Tipo de cambio (actual ${base.exchangeRate})</label><input type="number" step="0.01" id="sim-fx" value="${o.exchangeRate ?? base.exchangeRate}"/></div>
+        <div class="field"><label>IGI (actual ${(base.taxParams.igi*100).toFixed(1)}%)</label><input type="number" step="0.001" id="sim-igi" value="${o.igi ?? base.taxParams.igi}"/></div>
+        <div class="field"><label>Contenedores (actual ${base.containers})</label><input type="number" id="sim-cnt" value="${o.containers ?? base.containers}"/></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Flete marítimo total — monto directo (actual ${usd(currentFreight)})</label><input type="number" step="1" id="sim-freight-amt" value="${o.freightAmount ?? currentFreight}"/></div>
+        <div class="field"><label>Precio FOB del proveedor — monto directo (actual ${usd(currentFOB)})</label><input type="number" step="0.01" id="sim-fob-amt" value="${o.fobUnit ?? currentFOB}"/></div>
+      </div>
+      <div class="field"><label>Costo adicional a simular (USD)</label><input type="number" step="1" id="sim-extra-amt" value="${o.extraAmount ?? 0}"/></div>
+      <button class="btn" id="btn-run-sim">Recalcular escenario</button>
+      <button class="btn ghost" id="btn-reset-sim">Restablecer</button>
+    </div>
+
+    <div class="card">
+      <h3>Flete: real vs. simulado</h3>
+      <table>
+        <tr><td>Flete real</td><td class="num-cell">${usd(currentFreight)}</td></tr>
+        <tr><td>Flete simulado</td><td class="num-cell">${usd(o.freightAmount ?? currentFreight)}</td></tr>
+        <tr class="total"><td>Diferencia</td><td class="num-cell">${diffBadge((o.freightAmount ?? currentFreight)-currentFreight,0)}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Precio proveedor: real vs. simulado</h3>
+      <table>
+        <tr><td>FOB actual</td><td class="num-cell">${usd(currentFOB)}</td></tr>
+        <tr><td>FOB simulado</td><td class="num-cell">${usd(o.fobUnit ?? currentFOB)}</td></tr>
+        <tr class="total"><td>Diferencia por unidad</td><td class="num-cell">${diffBadge((o.fobUnit ?? currentFOB)-currentFOB,0)}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Comparación combinada</h3>
+      <table>
+        <tr><th></th><th class="num-cell">Actual</th><th class="num-cell">Simulado</th><th class="num-cell">Diferencia</th></tr>
+        <tr><td>Valor mercancía FOB</td><td class="num-cell">${usd(rBase.fobTotal)}</td><td class="num-cell">${usd(rSim.fobTotal)}</td><td class="num-cell">${diffBadge(rSim.fobTotal-rBase.fobTotal,0)}</td></tr>
+        <tr><td>Logística</td><td class="num-cell">${usd(rBase.logisticsTotal)}</td><td class="num-cell">${usd(rSim.logisticsTotal)}</td><td class="num-cell">${diffBadge(rSim.logisticsTotal-rBase.logisticsTotal,0)}</td></tr>
+        <tr><td>Impuestos</td><td class="num-cell">${usd(rBase.taxesTotal)}</td><td class="num-cell">${usd(rSim.taxesTotal)}</td><td class="num-cell">${diffBadge(rSim.taxesTotal-rBase.taxesTotal,0)}</td></tr>
+        <tr class="total"><td>COSTO UNITARIO (prom. embarque)</td><td class="num-cell">${usd(rBase.landedTotal/(base.items.reduce((a,i)=>a+i.qty,0)||1))}</td><td class="num-cell">${usd(rSim.landedTotal/(sim.items.reduce((a,i)=>a+i.qty,0)||1))}</td><td class="num-cell">${diffBadge((rSim.landedTotal/(sim.items.reduce((a,i)=>a+i.qty,0)||1))-(rBase.landedTotal/(base.items.reduce((a,i)=>a+i.qty,0)||1)),0)}</td></tr>
+        <tr class="total"><td>COSTO TOTAL PUESTO EN DESTINO</td><td class="num-cell">${usd(rBase.landedTotal)}</td><td class="num-cell">${usd(rSim.landedTotal)}</td><td class="num-cell">${diffBadge(diffTotal,0)}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Costo unitario por producto — escenario</h3>
+      <table>
+        <tr><th>Producto</th><th class="num-cell">Costo actual</th><th class="num-cell">Costo simulado</th><th class="num-cell">Diferencia</th></tr>
+        ${rSim.perProduct.map((pp,i)=>{
+          const b = rBase.perProduct[i];
+          const d = pp.unitCost-b.unitCost;
+          return `<tr><td>${productName(pp.productId)}</td><td class="num-cell">${usd(b.unitCost)}</td><td class="num-cell">${usd(pp.unitCost)}</td><td class="num-cell">${diffBadge(d,0)}</td></tr>`;
+        }).join('')}
+      </table>
+    </div>
+  `;
+}
+
+/* =========================================================
+   HANDLERS
+========================================================= */
+function attachHandlers(){
+  const roleSel = document.getElementById('role-select');
+  roleSel.onchange = async ()=>{ STATE.role = roleSel.value; await saveState(); render(); };
+
+  // Menús desplegables (⋯)
+  document.querySelectorAll('[data-menu-toggle]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMenu(el.dataset.menuToggle); });
+  });
+  if(openMenu){
+    document.addEventListener('click', function closeMenuOnce(){
+      openMenu = null; render(); document.removeEventListener('click', closeMenuOnce);
+    }, {once:true});
+  }
+
+  // Reportes
+  document.querySelectorAll('[data-report-pdf]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); downloadReportPDF(el.dataset.reportPdf); openMenu=null; render(); });
+  });
+  document.querySelectorAll('[data-report-xlsx]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); downloadReportExcel(el.dataset.reportXlsx); openMenu=null; render(); });
+  });
+
+  document.querySelectorAll('[data-select-shipment]').forEach(el=>{
+    el.addEventListener('click', ()=>{ selectedShipmentId = el.dataset.selectShipment; render(); });
+  });
+
+  const btnNew = document.getElementById('btn-new-shipment');
+  if(btnNew) btnNew.addEventListener('click', async ()=>{
+    if(!isAdmin()) return;
+    const id = uid('s');
+    STATE.shipments.push({
+      id, number:'Nuevo embarque', supplierName:'', forwarder:'', orderRefs:'',
+      originPort:'', destPort:'', incoterm:'FOB', containers:1, containerType:"40'HQ",
+      blNumber:'', eta:'',
+      exchangeRate: 18.0, date: todayStr(), phase:0, phaseEnteredAt: todayStr(),
+      phaseLog: [{phase:0, date: todayStr()}],
+      taxParams: {...STATE.taxParams}, allocationMethod:'fob', items:[], costItems:[],
+      extraCosts:[], payments:[], estimateSnapshot:null
+    });
+    selectedShipmentId = id;
+    await saveState(); render();
+  });
+
+  document.querySelectorAll('[data-del-shipment]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===el.dataset.delShipment);
+      if(!confirm(`¿Eliminar el embarque "${sh?sh.number:''}"? Esta acción no se puede deshacer.`)) return;
+      STATE.shipments = STATE.shipments.filter(s=>s.id!==el.dataset.delShipment);
+      selectedShipmentId = STATE.shipments[0]?.id || null;
+      openMenu = null;
+      await saveState(); render();
+    });
+  });
+
+  document.querySelectorAll('[data-sh-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      const field = el.dataset.shField;
+      let val = el.value;
+      if(['containers','exchangeRate','phase'].includes(field)) val = parseFloat(val);
+      if(field==='phase' && val!==sh.phase){
+        sh.phaseEnteredAt = todayStr();
+        sh.phaseLog = sh.phaseLog||[];
+        sh.phaseLog.push({phase: val, date: todayStr()});
+      }
+      sh[field] = val;
+      await saveState(); render();
+    });
+  });
+
+  document.querySelectorAll('[data-item-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      const it = sh.items.find(i=>i.id===el.dataset.itemId);
+      const field = el.dataset.itemField;
+      let val = el.value;
+      if(['qty','fobUnit','weight'].includes(field)) val = parseFloat(val)||0;
+      it[field] = val;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-add-item]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===el.dataset.addItem);
+      const firstProduct = STATE.products[0];
+      sh.items.push({id:uid('i'), productId: firstProduct?firstProduct.id:'', qty:0, fobUnit:0, weight:0});
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-del-item]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      sh.items = sh.items.filter(i=>i.id!==el.dataset.delItem);
+      await saveState(); render();
+    });
+  });
+
+  document.querySelectorAll('[data-cost-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      const ci = sh.costItems.find(c=>c.id===el.dataset.costId);
+      const field = el.dataset.costField;
+      let val = el.value;
+      if(field==='includeInCIF' || field==='isRealExpense') val = el.checked;
+      else if(['rate','qty'].includes(field)) val = parseFloat(val)||0;
+      ci[field] = val;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-add-cost]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===el.dataset.addCost);
+      sh.costItems.push({id:uid('c'), name:'Nuevo concepto', code:'NEW', basis:'flat', rate:0, qty:1, includeInCIF:false});
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-del-cost]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      sh.costItems = sh.costItems.filter(c=>c.id!==el.dataset.delCost);
+      await saveState(); render();
+    });
+  });
+
+  // Costos extra
+  document.querySelectorAll('[data-extra-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      const ec = sh.extraCosts.find(e=>e.id===el.dataset.extraId);
+      const field = el.dataset.extraField;
+      let val = el.value;
+      if(field==='amount') val = parseFloat(val)||0;
+      if(field==='productId' && val==='') val = null;
+      ec[field] = val;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-add-extra]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===el.dataset.addExtra);
+      sh.extraCosts = sh.extraCosts||[];
+      sh.extraCosts.push({id:uid('x'), concept:'Nuevo costo', category:'Otro', amount:0, currency:'USD', date: todayStr(), productId:null, notes:''});
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-del-extra]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      sh.extraCosts = sh.extraCosts.filter(e=>e.id!==el.dataset.delExtra);
+      await saveState(); render();
+    });
+  });
+
+  // Pagos
+  document.querySelectorAll('[data-payment-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      const p = sh.payments.find(x=>x.id===el.dataset.paymentId);
+      const field = el.dataset.paymentField;
+      let val = el.value;
+      if(field==='amount') val = parseFloat(val)||0;
+      if(field==='pct') val = (parseFloat(val)||0)/100;
+      if(field==='status'){ p.paidDate = val==='pagado'? todayStr() : null; }
+      p[field] = val;
+      if(field==='concept' || field==='pct'){
+        const meta = PAYMENT_CONCEPTS[p.concept] || PAYMENT_CONCEPTS.otro;
+        if(meta.base){
+          const r = computeShipment(sh);
+          p.amount = p.pct * paymentBaseValue(r, meta.base);
+        }
+      }
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-add-payment]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===el.dataset.addPayment);
+      sh.payments = sh.payments||[];
+      sh.payments.push({id:uid('pay'), concept:'otro', pct:0, amount:0, dueDate: todayStr(), paidDate:null, status:'pendiente'});
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-del-payment]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const sh = STATE.shipments.find(s=>s.id===selectedShipmentId);
+      sh.payments = sh.payments.filter(p=>p.id!==el.dataset.delPayment);
+      await saveState(); render();
+    });
+  });
+
+  // Congelar estimado
+  const btnFreeze = document.getElementById('btn-freeze-estimate');
+  if(btnFreeze) btnFreeze.addEventListener('click', async ()=>{
+    if(!isAdmin()) return;
+    const sh = STATE.shipments.find(s=>s.id===btnFreeze.dataset.freeze);
+    const fobTotal = sh.items.reduce((a,it)=>a+it.qty*it.fobUnit,0);
+    sh.estimateSnapshot = computeCore(fobTotal, sh.items, sh.costItems, sh.taxParams, sh.allocationMethod, [], sh.exchangeRate);
+    await saveState(); render();
+  });
+
+  // Parámetros
+  const btnParams = document.getElementById('btn-save-params');
+  if(btnParams) btnParams.addEventListener('click', async ()=>{
+    if(!isAdmin()) return;
+    STATE.taxParams = {
+      igi: parseFloat(document.getElementById('param-igi').value)||0,
+      dta: parseFloat(document.getElementById('param-dta').value)||0,
+      iva: parseFloat(document.getElementById('param-iva').value)||0,
+      insurancePct: parseFloat(document.getElementById('param-ins').value)||0,
+    };
+    await saveState(); render();
+  });
+  const btnAlertCfg = document.getElementById('btn-save-alertcfg');
+  if(btnAlertCfg) btnAlertCfg.addEventListener('click', async ()=>{
+    if(!isAdmin()) return;
+    STATE.alertConfig = {
+      phaseMaxDays: parseFloat(document.getElementById('param-phasedays').value)||10,
+      paymentSoonDays: parseFloat(document.getElementById('param-paydays').value)||5,
+      extraCostThreshold: parseFloat(document.getElementById('param-extrathresh').value)||500,
+    };
+    await saveState(); render();
+  });
+  ['btn-add-product','btn-add-product-2'].forEach(id=>{
+    const btn = document.getElementById(id);
+    if(btn) btn.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      STATE.products.push({id:uid('p'), sku:'NUEVO-SKU', name:'Nuevo producto', supplier:'', fraction:'', uom:'pza', status:'active'});
+      await saveState(); render();
+    });
+  });
+
+  document.querySelectorAll('[data-view-history]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openMenu = null; render();
+      setTimeout(()=>{
+        const card = document.getElementById('product-history-'+el.dataset.viewHistory);
+        if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+      }, 30);
+    });
+  });
+  document.querySelectorAll('[data-toggle-status]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!isAdmin()) return;
+      const p = STATE.products.find(x=>x.id===el.dataset.toggleStatus);
+      p.status = p.status==='archived' ? 'active' : 'archived';
+      openMenu = null;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-delete-product]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!isAdmin()) return;
+      const p = STATE.products.find(x=>x.id===el.dataset.deleteProduct);
+      if(!p) return;
+      if(productHasHistory(p.id)){
+        if(confirm(`"${p.name}" está usado en uno o más embarques y no puede eliminarse sin perder historial.\n\n¿Deseas marcarlo como INACTIVO en su lugar?`)){
+          p.status = 'archived';
+          await saveState();
+        }
+      } else {
+        if(confirm(`¿Estás seguro de que deseas eliminar "${p.name}"? Esta acción no se puede deshacer.`)){
+          STATE.products = STATE.products.filter(x=>x.id!==p.id);
+          await saveState();
+        }
+      }
+      openMenu = null; render();
+    });
+  });
+
+  // Proveedores / Forwarders
+  document.querySelectorAll('[data-add-directory]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      if(!isAdmin()) return;
+      const kind = el.dataset.addDirectory;
+      STATE[kind].push({id:uid('d'), name:'Nuevo '+(kind==='suppliers'?'proveedor':'forwarder'), country:'', contact:'', phone:'', email:'', address:'', notes:'', status:'active'});
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-dir-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      if(!isAdmin()) return;
+      const kind = el.dataset.dirKind;
+      const item = STATE[kind].find(x=>x.id===el.dataset.dirId);
+      item[el.dataset.dirField] = el.value;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-toggle-dir-status]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!isAdmin()) return;
+      const [kind, id] = el.dataset.toggleDirStatus.split(':');
+      const item = STATE[kind].find(x=>x.id===id);
+      item.status = item.status==='inactive' ? 'active' : 'inactive';
+      openMenu = null;
+      await saveState(); render();
+    });
+  });
+  document.querySelectorAll('[data-delete-dir]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!isAdmin()) return;
+      const [kind, id] = el.dataset.deleteDir.split(':');
+      const item = STATE[kind].find(x=>x.id===id);
+      const inUse = kind==='forwarders'
+        ? STATE.shipments.some(sh=>sh.forwarder===item.name)
+        : STATE.shipments.some(sh=>sh.supplierName===item.name);
+      if(inUse){
+        if(confirm(`"${item.name}" está usado en uno o más embarques. ¿Deseas marcarlo como INACTIVO en su lugar?`)){
+          item.status = 'inactive';
+          await saveState();
+        }
+      } else if(confirm(`¿Eliminar "${item.name}"? Esta acción no se puede deshacer.`)){
+        STATE[kind] = STATE[kind].filter(x=>x.id!==id);
+        await saveState();
+      }
+      openMenu = null; render();
+    });
+  });
+
+  // Importar Excel
+  const btnImport = document.getElementById('btn-import-excel');
+  const fileInput = document.getElementById('excel-file-input');
+  if(btnImport && fileInput){
+    btnImport.addEventListener('click', ()=>{ if(isAdmin()) fileInput.click(); });
+    fileInput.addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = async (evt)=>{
+        try{
+          const wb = XLSX.read(evt.target.result, {type:'binary'});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws);
+          rows.forEach(row=>{
+            STATE.products.push({
+              id: uid('p'),
+              sku: row.SKU || row.sku || 'SKU-'+uid(''),
+              name: row.Nombre || row.nombre || row.Producto || 'Producto importado',
+              supplier: row.Proveedor || row.proveedor || '',
+              fraction: row.Fraccion || row['Fracción'] || row.fraccion || '',
+              uom: row.UOM || row.uom || 'pza',
+              status: 'active'
+            });
+          });
+          await saveState(); render();
+        }catch(err){ alert('No se pudo leer el archivo. Verifica columnas: SKU, Nombre, Proveedor, Fracción.'); }
+      };
+      reader.readAsBinaryString(file);
+    });
+  }
+
+  // Simulador
+  const btnRun = document.getElementById('btn-run-sim');
+  if(btnRun) btnRun.addEventListener('click', ()=>{
+    simOverrides = {
+      exchangeRate: parseFloat(document.getElementById('sim-fx').value),
+      igi: parseFloat(document.getElementById('sim-igi').value),
+      containers: parseFloat(document.getElementById('sim-cnt').value),
+      freightAmount: parseFloat(document.getElementById('sim-freight-amt').value),
+      fobUnit: parseFloat(document.getElementById('sim-fob-amt').value),
+      extraAmount: parseFloat(document.getElementById('sim-extra-amt').value) || null,
+    };
+    render();
+  });
+  const btnReset = document.getElementById('btn-reset-sim');
+  if(btnReset) btnReset.addEventListener('click', ()=>{ simOverrides = {}; render(); });
+}
+
+/* =========================================================
+   BOOT
+========================================================= */
+(async function boot(){
+  await loadState();
+  render();
+})();
+</script>
+</body>
+</html>
