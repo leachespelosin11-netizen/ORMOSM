@@ -997,10 +997,11 @@ function renderDashboard(){
   const nContainers = STATE.shipments.reduce((a,s)=>a+s.containers,0);
   const phaseCounts = [0,0,0,0,0];
   STATE.shipments.forEach(s=>{ phaseCounts[s.phase] = (phaseCounts[s.phase]||0) + s.containers; });
-  const allPerProduct = results.flatMap(x=>x.r.perProduct);
-  const allPerProductEst = results.flatMap(x=>x.r.estimated.perProduct);
-  const avgUnitReal = allPerProduct.length? allPerProduct.reduce((a,p)=>a+p.unitCost,0)/allPerProduct.length : 0;
-  const avgUnitEst = allPerProductEst.length? allPerProductEst.reduce((a,p)=>a+p.unitCost,0)/allPerProductEst.length : 0;
+  const productUnitRows = results.flatMap(({sh,r})=> r.perProduct.map(pp=>{
+    const est = r.estimated.perProduct.find(x=>x.itemId===pp.itemId) || pp;
+    const prod = STATE.products.find(p=>p.id===pp.productId);
+    return { productName: prod?prod.name:'—', shipmentNumber: sh.number, estUnit: est.unitCost, realUnit: pp.unitCost };
+  }));
 
   // Próximo pago
   const pending = [];
@@ -1050,10 +1051,40 @@ function renderDashboard(){
       <div class="kpi"><div class="eyebrow">Costo real total</div><div class="val accent">${usd(totalRealLanded)}</div></div>
     </div>
     <div class="grid-kpi">
-      <div class="kpi"><div class="eyebrow">Costo unitario estimado (prom.)</div><div class="val">${usd(avgUnitEst)}</div></div>
-      <div class="kpi"><div class="eyebrow">Costo unitario real (prom.)</div><div class="val accent">${usd(avgUnitReal)}</div></div>
       <div class="kpi"><div class="eyebrow">Total impuestos</div><div class="val">${usd(totalTax)}</div></div>
       <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge(totalRealLanded-totalEstLanded, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0)}</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Costo estimado y real por embarque</h3>
+      <table>
+        <tr><th>Embarque</th><th>Fase</th><th>Proveedor</th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th></tr>
+        ${results.map(({sh,r})=>`
+          <tr>
+            <td>${sh.number}</td>
+            <td><span class="pill blue">${PHASES[sh.phase]}</span></td>
+            <td>${sh.supplierName||'—'}</td>
+            <td class="num-cell">${usd(r.estimated.landedTotal)}</td>
+            <td class="num-cell">${usd(r.landedTotal)}</td>
+            <td class="num-cell">${diffBadge(r.diff, r.diffPct)}</td>
+          </tr>`).join('')}
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Costo unitario por producto</h3>
+      ${productUnitRows.length? `
+      <table>
+        <tr><th>Producto</th><th>Embarque</th><th class="num-cell">Costo estimado / u</th><th class="num-cell">Costo real / u</th><th class="num-cell">Diferencia</th></tr>
+        ${productUnitRows.map(row=>`
+          <tr>
+            <td>${row.productName}</td>
+            <td>${row.shipmentNumber}</td>
+            <td class="num-cell">${usd(row.estUnit)}</td>
+            <td class="num-cell">${usd(row.realUnit)}</td>
+            <td class="num-cell">${diffBadge(row.realUnit-row.estUnit, row.estUnit? (row.realUnit-row.estUnit)/row.estUnit*100:0)}</td>
+          </tr>`).join('')}
+      </table>` : `<div class="empty">Sin productos registrados en ningún embarque todavía.</div>`}
     </div>
 
     <div class="card">
@@ -1069,22 +1100,6 @@ function renderDashboard(){
       <div class="legend">
         ${segs.map(s=>`<span><span class="dot" style="background:${s.color}"></span>${s.label}: ${usd(s.val)} (${(s.val/segTotal*100).toFixed(1)}%)</span>`).join('')}
       </div>
-    </div>
-
-    <div class="card">
-      <h3>Embarques</h3>
-      <table>
-        <tr><th>Embarque</th><th>Fase</th><th>Proveedor</th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th></tr>
-        ${results.map(({sh,r})=>`
-          <tr>
-            <td>${sh.number}</td>
-            <td><span class="pill blue">${PHASES[sh.phase]}</span></td>
-            <td>${sh.supplierName}</td>
-            <td class="num-cell">${usd(r.estimated.landedTotal)}</td>
-            <td class="num-cell">${usd(r.landedTotal)}</td>
-            <td class="num-cell">${diffBadge(r.diff, r.diffPct)}</td>
-          </tr>`).join('')}
-      </table>
     </div>
   `;
 }
