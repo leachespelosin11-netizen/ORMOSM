@@ -9,22 +9,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#151b26;
-    --hull:#141d2e;
-    --hull-2:#1d2a42;
-    --paper:#f6f5f2;
+    --ink:#0f1b24;
+    --hull:#0a2540;
+    --hull-2:#123a5e;
+    --paper:#f4f7f7;
     --card:#ffffff;
-    --line:#e6e4dd;
-    --line-soft:#eeece6;
-    --manifest:#c2703c;
-    --manifest-deep:#9c5828;
-    --manifest-soft:#fbeee3;
+    --line:#e0e6e7;
+    --line-soft:#edf1f1;
+    --manifest:#0f9179;
+    --manifest-deep:#0b6b58;
+    --manifest-soft:#e1f4ef;
     --ok:#2f8562;
     --ok-soft:#e5f3ec;
     --warn:#c2453f;
     --warn-soft:#fbe9e8;
-    --ink-soft:#69707d;
-    --ink-faint:#9aa0aa;
+    --ink-soft:#5c6b73;
+    --ink-faint:#93a3aa;
     --mono: "IBM Plex Mono","SFMono-Regular",Consolas,monospace;
     --display: "Manrope","Inter",sans-serif;
     --sans: "Inter","Helvetica Neue",Arial,sans-serif;
@@ -125,6 +125,12 @@
   .alert-dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
   .alert-dot.red{background:var(--warn);}
   .alert-dot.amber{background:var(--manifest);}
+  .status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;}
+  .status-dot.green{background:var(--ok);}
+  .status-dot.red{background:var(--warn);}
+  .status-dot.amber{background:var(--manifest);}
+  .dash-ship-row{cursor:pointer;transition:background-color .1s;}
+  .dash-ship-row:hover{background:var(--manifest-soft);}
   .diff-badge{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:6px;font-weight:500;}
   .diff-badge.up{background:var(--warn-soft);color:var(--warn);}
   .diff-badge.down{background:var(--ok-soft);color:var(--ok);}
@@ -678,7 +684,7 @@ function buildReportHTML(sh){
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-top:6px;}
     .grid div span{color:#69707d;display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;}
     .total-row td{font-weight:700;border-top:2px solid #151b26;}
-    .header-row{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c2703c;padding-bottom:14px;}
+    .header-row{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0f9179;padding-bottom:14px;}
     @media print{ body{padding:14px;} }
   </style></head><body>
     <div class="header-row">
@@ -1056,18 +1062,26 @@ function renderDashboard(){
     </div>
 
     <div class="card">
-      <h3>Costo estimado y real por embarque</h3>
+      <h3>Costo estimado y real por embarque <small>clic en un embarque para abrirlo</small></h3>
       <table>
-        <tr><th>Embarque</th><th>Fase</th><th>Proveedor</th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th></tr>
-        ${results.map(({sh,r})=>`
-          <tr>
-            <td>${sh.number}</td>
+        <tr><th></th><th>Embarque</th><th>Fase</th><th>Proveedor</th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th><th></th></tr>
+        ${results.map(({sh,r})=>{
+          const statusDot = Math.abs(r.diff)<0.01 ? 'green' : (r.diff>0 ? 'red' : 'amber');
+          return `
+          <tr class="dash-ship-row" data-goto-shipment="${sh.id}">
+            <td><span class="status-dot ${statusDot}" title="${statusDot==='green'?'En presupuesto':(statusDot==='red'?'Sobre el estimado':'Bajo el estimado')}"></span></td>
+            <td><strong>${sh.number}</strong></td>
             <td><span class="pill blue">${PHASES[sh.phase]}</span></td>
             <td>${sh.supplierName||'—'}</td>
             <td class="num-cell">${usd(r.estimated.landedTotal)}</td>
             <td class="num-cell">${usd(r.landedTotal)}</td>
             <td class="num-cell">${diffBadge(r.diff, r.diffPct)}</td>
-          </tr>`).join('')}
+            <td class="row-actions" onclick="event.stopPropagation()">
+              <button class="btn xs ghost" data-report-pdf="${sh.id}" title="Descargar reporte PDF">PDF</button>
+              <button class="btn xs ghost" data-report-xlsx="${sh.id}" title="Descargar reporte Excel">Excel</button>
+            </td>
+          </tr>`;
+        }).join('')}
       </table>
     </div>
 
@@ -1769,6 +1783,13 @@ function attachHandlers(){
 
   document.querySelectorAll('[data-select-shipment]').forEach(el=>{
     el.addEventListener('click', ()=>{ selectedShipmentId = el.dataset.selectShipment; render(); });
+  });
+  document.querySelectorAll('[data-goto-shipment]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(!canAccessView('shipments')) return;
+      selectedShipmentId = el.dataset.gotoShipment;
+      navigateTo('shipments');
+    });
   });
 
   const btnNew = document.getElementById('btn-new-shipment');
