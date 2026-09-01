@@ -481,6 +481,57 @@ function saveFlashBadge(key){
   return saveFlash===key ? `<span class="pill green" style="margin-left:6px;">Guardado ✓</span>` : '';
 }
 
+/* =========================================================
+   RECORDATORIOS DE PAGO POR CORREO (backend real: Vercel Functions + Redis + Resend)
+   -----------------------------------------------------------
+   El resto de la app vive solo en localStorage del navegador, así que no hay nada del lado del
+   servidor que pueda "despertar" y revisar fechas de pago cuando nadie tiene la pestaña abierta.
+   Por eso este es el único apartado que sí depende de un backend real: /api/reminders guarda el
+   recordatorio (embarque, monto, fecha, correo) en Redis, y un Cron Job de Vercel corre una vez
+   al día, revisa esa lista y manda el correo con Resend cuando faltan exactamente 2 días.
+========================================================= */
+let remindersCache = null; // null = aún no cargado; array = cargado desde /api/reminders
+let remindersLoading = false;
+let remindersError = null;
+let remindersSaveState = {}; // paymentId -> 'saving' | 'saved' | 'error'
+
+async function loadReminders(){
+  if(remindersLoading || remindersCache!==null) return;
+  remindersLoading = true;
+  try{
+    const res = await fetch('/api/reminders');
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    remindersCache = data.reminders || [];
+    remindersError = null;
+  }catch(e){
+    remindersError = 'No se pudo conectar con el servicio de recordatorios (' + e.message + ').';
+    remindersCache = [];
+  }
+  remindersLoading = false;
+  render();
+}
+
+async function saveReminder(payload){
+  remindersSaveState[payload.paymentId] = 'saving';
+  render();
+  try{
+    const res = await fetch('/api/reminders', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    remindersCache = null; // fuerza recarga desde el servidor para reflejar el estado real
+    remindersSaveState[payload.paymentId] = 'saved';
+    await loadReminders();
+  }catch(e){
+    remindersSaveState[payload.paymentId] = 'error';
+    render();
+  }
+  setTimeout(()=>{ delete remindersSaveState[payload.paymentId]; render(); }, 2000);
+}
+
 let openMenu = null; // e.g. 'kebab-s1' or 'report-s1' or 'prod-p1'
 function toggleMenu(id){ openMenu = (openMenu===id) ? null : id; render(); }
 function productHasHistory(productId){
@@ -1624,6 +1675,8 @@ function renderPayments(){
   });
   rows.sort((a,b)=> (a.p.status==='pendiente'?0:1) - (b.p.status==='pendiente'?0:1) || new Date(a.p.dueDate)-new Date(b.p.dueDate));
 
+  if(isAdmin()) loadReminders(); // fire-and-forget; re-renderiza cuando llegue la respuesta
+
   return `
     <h2 class="page-title">Pagos a proveedores</h2>
     <div class="page-sub">Estado de anticipos y saldos por embarque</div>
@@ -1644,6 +1697,52 @@ function renderPayments(){
           </tr>`;
         }).join('')}
       </table>
+    </div>
+
+    ${isAdmin() ? renderRemindersCard(rows) : ''}
+  `;
+}
+
+function renderRemindersCard(rows){
+  const pending = rows.filter(({p})=>p.status==='pendiente');
+  const findReminder = (paymentId) => (remindersCache||[]).find(r=>r.paymentId===paymentId);
+
+  return `
+    <div class="card">
+      <h3>Recordatorios de pago por correo <small>se envían 2 días antes del vencimiento</small></h3>
+      <div class="info-note">
+        Este apartado sí depende de un servicio externo (no solo del navegador): al activar un recordatorio se guarda en un servidor
+        y un proceso automático de Vercel revisa la lista una vez al día y manda el correo cuando faltan exactamente 2 días para el
+        vencimiento. Requiere que <code>RESEND_API_KEY</code> esté configurada como variable de entorno en Vercel — si no está
+        configurada, el recordatorio se guarda pero el correo no se envía.
+      </div>
+      ${remindersError ? `<div class="flag-note">${remindersError}</div>` : ''}
+      ${remindersCache===null ? `<div class="empty">Cargando recordatorios…</div>` : (pending.length? `
+      <table>
+        <tr><th>Embarque</th><th>Concepto</th><th class="num-cell">Monto</th><th>Vencimiento</th><th>Correo destinatario</th><th>Activo</th><th></th></tr>
+        ${pending.map(({sh,p})=>{
+          const rem = findReminder(p.id);
+          const saveState = remindersSaveState[p.id];
+          return `
+          <tr>
+            <td>${sh.number}</td>
+            <td>${paymentLabel(p)}</td>
+            <td class="num-cell">${usd(p.amount)}</td>
+            <td>${formatDateEs(p.dueDate)}</td>
+            <td><input type="email" data-reminder-email="${p.id}" value="${rem?rem.email:''}" placeholder="correo@ejemplo.com" style="min-width:180px"/></td>
+            <td><input type="checkbox" data-reminder-active="${p.id}" ${rem?'checked':''}/></td>
+            <td>
+              <button class="btn xs ghost" data-reminder-save="${p.id}"
+                data-shipment-number="${sh.number}" data-concept="${paymentLabel(p)}"
+                data-amount="${p.amount}" data-due-date="${p.dueDate}">Guardar</button>
+              ${saveState==='saving'? `<span class="pill gray" style="margin-left:6px;">Guardando…</span>` : ''}
+              ${saveState==='saved'? `<span class="pill green" style="margin-left:6px;">Guardado ✓</span>` : ''}
+              ${saveState==='error'? `<span class="pill red" style="margin-left:6px;">Error</span>` : ''}
+              ${rem && rem.sent? `<span class="pill blue" style="margin-left:6px;">Correo enviado</span>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>` : `<div class="empty">No hay pagos pendientes a los que programarles recordatorio.</div>`)}
     </div>
   `;
 }
@@ -2127,6 +2226,28 @@ function attachHandlers(){
   });
   document.querySelectorAll('[data-save-shipment]').forEach(el=>{
     el.addEventListener('click', ()=> saveWithFlash('ship-'+el.dataset.saveShipment));
+  });
+
+  // Recordatorios de pago por correo
+  document.querySelectorAll('[data-reminder-save]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(!isAdmin()) return;
+      const paymentId = el.dataset.reminderSave;
+      const emailInput = document.querySelector(`[data-reminder-email="${paymentId}"]`);
+      const activeInput = document.querySelector(`[data-reminder-active="${paymentId}"]`);
+      const active = activeInput ? activeInput.checked : false;
+      const email = emailInput ? emailInput.value.trim() : '';
+      if(active && !email){ alert('Captura un correo destinatario antes de activar el recordatorio.'); return; }
+      saveReminder({
+        paymentId,
+        active,
+        shipmentNumber: el.dataset.shipmentNumber,
+        concept: el.dataset.concept,
+        amountUSD: parseFloat(el.dataset.amount)||0,
+        dueDate: el.dataset.dueDate,
+        email,
+      });
+    });
   });
 
   document.querySelectorAll('[data-view-history]').forEach(el=>{
