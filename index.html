@@ -1070,15 +1070,22 @@ function renderDashboard(){
   ];
   const segTotal = segs.reduce((a,s)=>a+s.val,0) || 1;
 
-  // Monto IMP (impuestos de importación: IGI+DTA+IVA) del año en curso, apartado independiente — solo Administradores.
+  // Monto IMP (Importaciones) del año en curso: TODO lo gastado en importar — mercancía +
+  // logística + impuestos, el costo real puesto en destino — no solo la parte de impuestos.
+  // Apartado independiente, visible para ambos roles, siempre en MXN (a diferencia del resto
+  // del Dashboard de Administrador, que se queda en USD).
   const currentYear = new Date().getFullYear();
   const impYear = results.filter(({sh})=> new Date(sh.date+'T00:00:00').getFullYear()===currentYear);
-  const impYearTotal = impYear.reduce((a,x)=>a+x.r.taxesTotal,0);
+  const impYearTotal = impYear.reduce((a,x)=>a+x.r.landedTotal,0);
 
-  // Socios: todo en MXN con TC del día + $1.10. Administradores: USD, como siempre.
+  // Socios: todo en MXN con TC del día + $1.10. Administradores: USD, como siempre — salvo el
+  // apartado de Monto IMP, que siempre se pide en pesos para ambos roles (con el TC del día,
+  // sin el recargo de $1.10 que es una regla exclusiva de la vista de Socios).
   const fx = admin ? 1 : socioExchangeRate();
   const money = admin ? usd : (n)=>mxn(n*fx);
   const moneyRaw = admin ? usd : mxn; // para valores que ya vienen multiplicados por fx (p.ej. dentro de diffBadge)
+  const impRate = admin ? STATE.dailyExchangeRate : fx;
+  const impMoney = (n)=>mxn(n*impRate);
 
   return `
     <h2 class="page-title">Dashboard</h2>
@@ -1113,15 +1120,6 @@ function renderDashboard(){
       <div class="kpi"><div class="eyebrow">Total impuestos</div><div class="val">${usd(totalTax)}</div></div>
       <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge(totalRealLanded-totalEstLanded, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0)}</div></div>
     </div>
-
-    <div class="card">
-      <h3>Monto IMP — año en curso <small>${currentYear}</small></h3>
-      <div class="page-sub" style="margin-bottom:0;">Suma de impuestos de importación (IGI + DTA + IVA) de los embarques con fecha en ${currentYear}. Apartado independiente del próximo pago — se actualiza solo conforme se registren o modifiquen embarques de este año.</div>
-      <div class="grid-kpi" style="margin-top:12px;">
-        <div class="kpi"><div class="eyebrow">Monto IMP ${currentYear}</div><div class="val accent">${usd(impYearTotal)}</div></div>
-        <div class="kpi"><div class="eyebrow">Embarques incluidos</div><div class="val">${impYear.length}</div></div>
-      </div>
-    </div>
     ` : `
     <div class="grid-kpi">
       <div class="kpi"><div class="eyebrow">Costo estimado total</div><div class="val">${money(totalEstLanded)}</div></div>
@@ -1129,6 +1127,15 @@ function renderDashboard(){
       <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge((totalRealLanded-totalEstLanded)*fx, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0, moneyRaw)}</div></div>
     </div>
     `}
+
+    <div class="card">
+      <h3>Monto IMP — año en curso <small>${currentYear}</small></h3>
+      <div class="page-sub" style="margin-bottom:0;">Monto total gastado en importaciones (mercancía + logística + impuestos, costo real puesto en destino) de los embarques con fecha en ${currentYear}. Apartado independiente del próximo pago — se actualiza solo conforme se registren o modifiquen embarques de este año. Siempre en pesos, TC ${fmt(impRate)}.</div>
+      <div class="grid-kpi" style="margin-top:12px;">
+        <div class="kpi"><div class="eyebrow">Monto IMP ${currentYear}</div><div class="val accent">${impMoney(impYearTotal)}</div></div>
+        <div class="kpi"><div class="eyebrow">Embarques incluidos</div><div class="val">${impYear.length}</div></div>
+      </div>
+    </div>
 
     <div class="card">
       <h3>Costo por embarque <small>clic en un embarque para abrirlo</small></h3>
