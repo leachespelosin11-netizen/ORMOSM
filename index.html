@@ -241,6 +241,9 @@ function seedState(){
       {id:'u5', name:'Enrique Valdivia', email:'enrique.valdivia@ormo.mx', role:'admin', salt:'7b5bf59e8a63e28f8b7a9a4b3ca01554', passwordHash:'435b2264c9309ec789acaa74d17a433d95a3e105af5e50a4b2b593164f9945f5', mustChangePassword:true, active:true},
     ],
     session: null, // {userId, expiresAt}
+    // TC del día que el Administrador captura manualmente (no hay feed de tipo de cambio en vivo
+    // en esta app). A los Socios siempre se les muestra este valor + $1.10 MXN.
+    dailyExchangeRate: 18.00,
     alertConfig: { phaseMaxDays: 10, paymentSoonDays: 5, extraCostThreshold: 500 },
     taxParams: { igi: 0.25, dta: 0.008, iva: 0.16, insurancePct: 0.0065 },
     suppliers: [
@@ -433,6 +436,7 @@ async function loadState(){
   // solo completamos lo que falte, para no perder embarques/productos ya capturados.
   if(!Array.isArray(STATE.users) || !STATE.users.length){ STATE.users = seedState().users; }
   if(!('session' in STATE)) STATE.session = null;
+  if(typeof STATE.dailyExchangeRate !== 'number') STATE.dailyExchangeRate = 18.00;
   // Migración aditiva: agrega el embarque W.C. Sienna / W.C. Praga si todavía no existe, sin
   // tocar ningún producto/embarque/dato que ya esté capturado.
   if(!STATE.shipments.some(sh=>sh.id==='s_wcsienna_praga')){
@@ -451,6 +455,20 @@ async function saveState(){
 function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+const DIAS_ES = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+// Formato "Lunes 9 de septiembre de 2026" para fechas mostradas como texto (no usar en <input type=date>,
+// que debe conservar formato ISO para el selector nativo del navegador).
+function formatDateEs(dateStr){
+  if(!dateStr) return '—';
+  const d = new Date(dateStr+'T00:00:00');
+  if(isNaN(d.getTime())) return dateStr;
+  const dow = DIAS_ES[d.getDay()];
+  return `${dow.charAt(0).toUpperCase()+dow.slice(1)} ${d.getDate()} de ${MESES_ES[d.getMonth()]} de ${d.getFullYear()}`;
+}
+// TC aplicado a Socios = TC del día capturado por el Administrador + $1.10 MXN (regla de negocio fija).
+function socioExchangeRate(){ return (STATE.dailyExchangeRate||0) + 1.10; }
 
 let saveFlash = null; // key of the last explicit "Guardar" click, shows a brief confirmation
 async function saveWithFlash(key){
@@ -644,10 +662,13 @@ function fmt(n, d=2){ return (n||0).toLocaleString('es-MX', {minimumFractionDigi
 function usd(n){ return '$'+fmt(n)+' USD'; }
 function mxn(n){ return '$'+fmt(n)+' MXN'; }
 function pct(n){ return (n>=0?'+':'')+fmt(n,1)+'%'; }
-function diffBadge(diff, diffPct){
+function diffBadge(diff, diffPct, moneyFn){
+  moneyFn = moneyFn || usd;
   const cls = Math.abs(diff)<0.01 ? 'flat' : (diff>0?'up':'down');
-  return `<span class="diff-badge ${cls}">${diff>=0?'+':''}${usd(diff)} (${pct(diffPct)})</span>`;
+  return `<span class="diff-badge ${cls}">${diff>=0?'+':''}${moneyFn(diff)} (${pct(diffPct)})</span>`;
 }
+// % real de un delta contra su base (0 si la base es 0, para no dividir entre cero).
+function pctOf(diff, base){ return base ? diff/base*100 : 0; }
 
 /* =========================================================
    REPORTES DE EMBARQUE (PDF vía impresión / Excel)
@@ -672,9 +693,9 @@ function buildReportHTML(sh){
   const totalPaid = (sh.payments||[]).filter(p=>p.status==='pagado').reduce((a,p)=>a+p.amount,0);
   const totalOrder = (sh.payments||[]).reduce((a,p)=>a+p.amount,0);
   const nextPending = (sh.payments||[]).filter(p=>p.status==='pendiente').sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate))[0];
-  const paymentRows = (sh.payments||[]).map(p=>`<tr><td>${paymentLabel(p)}</td><td style="text-align:right">${(p.pct*100).toFixed(0)}%</td><td style="text-align:right">${usd(p.amount)}</td><td>${p.dueDate}</td><td>${p.status==='pagado'?'Pagado':'Pendiente'}</td></tr>`).join('');
+  const paymentRows = (sh.payments||[]).map(p=>`<tr><td>${paymentLabel(p)}</td><td style="text-align:right">${(p.pct*100).toFixed(0)}%</td><td style="text-align:right">${usd(p.amount)}</td><td>${formatDateEs(p.dueDate)}</td><td>${p.status==='pagado'?'Pagado':'Pendiente'}</td></tr>`).join('');
 
-  const phaseRows = (sh.phaseLog||[]).map(pl=>`<tr><td>Fase ${pl.phase} — ${PHASES[pl.phase]}</td><td>${pl.date}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Sin historial de fases registrado</td></tr>';
+  const phaseRows = (sh.phaseLog||[]).map(pl=>`<tr><td>Fase ${pl.phase} — ${PHASES[pl.phase]}</td><td>${formatDateEs(pl.date)}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#888">Sin historial de fases registrado</td></tr>';
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
   <title>Reporte — ${sh.number}</title>
@@ -701,7 +722,7 @@ function buildReportHTML(sh){
     <h2>Información general</h2>
     <div class="grid">
       <div><span>Proveedor</span>${sh.supplierName||'—'}</div>
-      <div><span>Fecha</span>${sh.date}</div>
+      <div><span>Fecha</span>${formatDateEs(sh.date)}</div>
       <div><span>Contenedores</span>${sh.containers} × ${sh.containerType}</div>
       <div><span>Incoterm</span>${sh.incoterm}</div>
       <div><span>Puerto origen</span>${sh.originPort||'—'}</div>
@@ -817,7 +838,11 @@ function downloadReportExcel(shId){
 /* =========================================================
    ALERTAS
 ========================================================= */
-function computeAlerts(){
+function computeAlerts(moneyFn){
+  // moneyFn formatea montos nativos en USD (pagos, diferencias) — usd() por defecto para
+  // Administrador; el Dashboard le pasa la versión que convierte a MXN para Socios, para que
+  // ninguna alerta se quede mostrando dólares en la vista de Socios.
+  moneyFn = moneyFn || usd;
   const alerts = [];
   const cfg = STATE.alertConfig;
   const today = todayStr();
@@ -826,7 +851,7 @@ function computeAlerts(){
       if(p.status==='pendiente'){
         const d = daysBetween(today, p.dueDate);
         if(d < 0) alerts.push({level:'red', text:`Pago vencido: "${paymentLabel(p)}" de ${sh.number} (${sh.supplierName}) — venció hace ${Math.abs(d)} día(s).`});
-        else if(d <= cfg.paymentSoonDays) alerts.push({level:'amber', text:`Pago próximo: "${paymentLabel(p)}" de ${sh.number} en ${d} día(s) — ${usd(p.amount)}.`});
+        else if(d <= cfg.paymentSoonDays) alerts.push({level:'amber', text:`Pago próximo: "${paymentLabel(p)}" de ${sh.number} en ${d} día(s) — ${moneyFn(p.amount)}.`});
       }
     });
     const daysInPhase = daysBetween(sh.phaseEnteredAt||sh.date, today);
@@ -835,11 +860,16 @@ function computeAlerts(){
     }
     const r = computeShipment(sh);
     if(r.diff > 0.01){
-      alerts.push({level:'red', text:`${sh.number}: costo real superó el estimado por ${usd(r.diff)} (${pct(r.diffPct)}).`});
+      alerts.push({level:'red', text:`${sh.number}: costo real superó el estimado por ${moneyFn(r.diff)} (${pct(r.diffPct)}).`});
     }
     (sh.extraCosts||[]).forEach(ec=>{
-      if(ec.amount >= cfg.extraCostThreshold){
-        alerts.push({level:'amber', text:`Costo extraordinario en ${sh.number}: "${ec.concept}" por ${ec.currency==='MXN'?mxn(ec.amount):usd(ec.amount)}.`});
+      // El umbral (extraCostThreshold) está definido en USD — un extra capturado en MXN se
+      // convierte con el TC del propio embarque antes de comparar, para no disparar (o dejar de
+      // disparar) la alerta por mezclar unidades distintas.
+      const ecUSD = ec.currency==='MXN' ? ec.amount/(sh.exchangeRate||1) : ec.amount;
+      if(ecUSD >= cfg.extraCostThreshold){
+        const shown = ec.currency==='MXN' ? mxn(ec.amount) : moneyFn(ec.amount);
+        alerts.push({level:'amber', text:`Costo extraordinario en ${sh.number}: "${ec.concept}" por ${shown}.`});
       }
     });
   });
@@ -851,7 +881,9 @@ function computeAlerts(){
 ========================================================= */
 let currentView = 'dashboard';
 let selectedShipmentId = null;
-let simOverrides = {};
+let simShipmentId = null;
+let simFreightOverride = null;
+let simExchangeRateOverride = null;
 
 function setView(v){
   if(!canAccessView(v)){ navigateTo('dashboard'); return; }
@@ -1002,6 +1034,7 @@ function render(){
 
 /* ---------- DASHBOARD ---------- */
 function renderDashboard(){
+  const admin = isAdmin();
   const results = STATE.shipments.map(sh=>({sh, r: computeShipment(sh)}));
   const totalFOB = results.reduce((a,x)=>a+x.r.fobTotal,0);
   const totalLog = results.reduce((a,x)=>a+x.r.logisticsTotal,0);
@@ -1027,7 +1060,8 @@ function renderDashboard(){
   pending.sort((a,b)=>a.days-b.days);
   const nextPay = pending[0];
 
-  const alerts = computeAlerts();
+  const alertsFx = admin ? 1 : socioExchangeRate();
+  const alerts = computeAlerts(admin ? usd : (n)=>mxn(n*alertsFx));
 
   const segs = [
     {label:'Mercancía', val: totalFOB, color:'#183353'},
@@ -1036,16 +1070,26 @@ function renderDashboard(){
   ];
   const segTotal = segs.reduce((a,s)=>a+s.val,0) || 1;
 
+  // Monto IMP (impuestos de importación: IGI+DTA+IVA) del año en curso, apartado independiente — solo Administradores.
+  const currentYear = new Date().getFullYear();
+  const impYear = results.filter(({sh})=> new Date(sh.date+'T00:00:00').getFullYear()===currentYear);
+  const impYearTotal = impYear.reduce((a,x)=>a+x.r.taxesTotal,0);
+
+  // Socios: todo en MXN con TC del día + $1.10. Administradores: USD, como siempre.
+  const fx = admin ? 1 : socioExchangeRate();
+  const money = admin ? usd : (n)=>mxn(n*fx);
+  const moneyRaw = admin ? usd : mxn; // para valores que ya vienen multiplicados por fx (p.ej. dentro de diffBadge)
+
   return `
     <h2 class="page-title">Dashboard</h2>
-    <div class="page-sub">Vista ejecutiva — ${STATE.shipments.length} embarque(s) registrado(s)</div>
+    <div class="page-sub">Vista ejecutiva — ${STATE.shipments.length} embarque(s) registrado(s)${admin?'':` · montos en MXN, TC ${fmt(fx)}`}</div>
 
     <div class="card">
       <h3>Próximo pago</h3>
       ${nextPay ? `
         <div class="grid-5">
-          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Fecha</div><div style="font-weight:700">${nextPay.p.dueDate}</div></div>
-          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Monto</div><div style="font-weight:700">${usd(nextPay.p.amount)}</div></div>
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Fecha</div><div style="font-weight:700">${formatDateEs(nextPay.p.dueDate)}</div></div>
+          <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Monto</div><div style="font-weight:700">${money(nextPay.p.amount)}</div></div>
           <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Proveedor</div><div>${nextPay.sh.supplierName}</div></div>
           <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Embarque</div><div>${nextPay.sh.number}</div></div>
           <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">Días restantes</div><div style="font-weight:700;color:${nextPay.days<0?'var(--warn)':'var(--ink)'}">${nextPay.days<0? 'Vencido hace '+Math.abs(nextPay.days)+' d' : nextPay.days+' días'}</div></div>
@@ -1058,6 +1102,7 @@ function renderDashboard(){
       ${[0,1,2,3,4].map(i=>`<div class="kpi"><div class="eyebrow">Fase ${i}</div><div class="val small">${phaseCounts[i]||0}<span style="font-size:11px;color:var(--ink-soft)"> · ${PHASES[i]}</span></div></div>`).join('')}
     </div>
 
+    ${admin ? `
     <div class="grid-kpi">
       <div class="kpi"><div class="eyebrow">Costo FOB</div><div class="val">${usd(totalFOB)}</div></div>
       <div class="kpi"><div class="eyebrow">Flete + gastos import.</div><div class="val">${usd(totalLog)}</div></div>
@@ -1070,9 +1115,29 @@ function renderDashboard(){
     </div>
 
     <div class="card">
-      <h3>Costo estimado y real por embarque <small>clic en un embarque para abrirlo</small></h3>
+      <h3>Monto IMP — año en curso <small>${currentYear}</small></h3>
+      <div class="page-sub" style="margin-bottom:0;">Suma de impuestos de importación (IGI + DTA + IVA) de los embarques con fecha en ${currentYear}. Apartado independiente del próximo pago — se actualiza solo conforme se registren o modifiquen embarques de este año.</div>
+      <div class="grid-kpi" style="margin-top:12px;">
+        <div class="kpi"><div class="eyebrow">Monto IMP ${currentYear}</div><div class="val accent">${usd(impYearTotal)}</div></div>
+        <div class="kpi"><div class="eyebrow">Embarques incluidos</div><div class="val">${impYear.length}</div></div>
+      </div>
+    </div>
+    ` : `
+    <div class="grid-kpi">
+      <div class="kpi"><div class="eyebrow">Costo estimado total</div><div class="val">${money(totalEstLanded)}</div></div>
+      <div class="kpi"><div class="eyebrow">Costo real total</div><div class="val accent">${money(totalRealLanded)}</div></div>
+      <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge((totalRealLanded-totalEstLanded)*fx, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0, moneyRaw)}</div></div>
+    </div>
+    `}
+
+    <div class="card">
+      <h3>Costo por embarque <small>clic en un embarque para abrirlo</small></h3>
       <table>
-        <tr><th></th><th>Embarque</th><th>Fase</th><th>Proveedor</th><th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th><th></th></tr>
+        <tr>
+          <th></th><th>Embarque</th><th>Fase</th><th>Proveedor</th>
+          ${admin? `<th class="num-cell">FOB</th><th class="num-cell">Flete+Gastos</th><th class="num-cell">Impuestos</th>`:''}
+          <th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th><th></th>
+        </tr>
         ${results.map(({sh,r})=>{
           const statusDot = Math.abs(r.diff)<0.01 ? 'green' : (r.diff>0 ? 'red' : 'amber');
           return `
@@ -1081,9 +1146,10 @@ function renderDashboard(){
             <td><strong>${sh.number}</strong></td>
             <td><span class="pill blue">${PHASES[sh.phase]}</span></td>
             <td>${sh.supplierName||'—'}</td>
-            <td class="num-cell">${usd(r.estimated.landedTotal)}</td>
-            <td class="num-cell">${usd(r.landedTotal)}</td>
-            <td class="num-cell">${diffBadge(r.diff, r.diffPct)}</td>
+            ${admin? `<td class="num-cell">${usd(r.fobTotal)}</td><td class="num-cell">${usd(r.logisticsTotal)}</td><td class="num-cell">${usd(r.taxesTotal)}</td>`:''}
+            <td class="num-cell">${money(r.estimated.landedTotal)}</td>
+            <td class="num-cell">${money(r.landedTotal)}</td>
+            <td class="num-cell">${diffBadge(r.diff*fx, r.diffPct, moneyRaw)}</td>
             <td class="row-actions" onclick="event.stopPropagation()">
               <button class="btn xs ghost" data-report-pdf="${sh.id}" title="Descargar reporte PDF">PDF</button>
               <button class="btn xs ghost" data-report-xlsx="${sh.id}" title="Descargar reporte Excel">Excel</button>
@@ -1102,9 +1168,9 @@ function renderDashboard(){
           <tr>
             <td>${row.productName}</td>
             <td>${row.shipmentNumber}</td>
-            <td class="num-cell">${usd(row.estUnit)}</td>
-            <td class="num-cell">${usd(row.realUnit)}</td>
-            <td class="num-cell">${diffBadge(row.realUnit-row.estUnit, row.estUnit? (row.realUnit-row.estUnit)/row.estUnit*100:0)}</td>
+            <td class="num-cell">${money(row.estUnit)}</td>
+            <td class="num-cell">${money(row.realUnit)}</td>
+            <td class="num-cell">${diffBadge((row.realUnit-row.estUnit)*fx, row.estUnit? (row.realUnit-row.estUnit)/row.estUnit*100:0, moneyRaw)}</td>
           </tr>`).join('')}
       </table>` : `<div class="empty">Sin productos registrados en ningún embarque todavía.</div>`}
     </div>
@@ -1115,12 +1181,12 @@ function renderDashboard(){
     </div>
 
     <div class="card">
-      <h3>¿A dónde se va el dinero? <small>USD</small></h3>
+      <h3>¿A dónde se va el dinero? <small>${admin?'USD':'proporción'}</small></h3>
       <div class="bar-track">
         ${segs.map(s=>`<div class="bar-seg" style="width:${(s.val/segTotal*100).toFixed(1)}%;background:${s.color}"></div>`).join('')}
       </div>
       <div class="legend">
-        ${segs.map(s=>`<span><span class="dot" style="background:${s.color}"></span>${s.label}: ${usd(s.val)} (${(s.val/segTotal*100).toFixed(1)}%)</span>`).join('')}
+        ${segs.map(s=>`<span><span class="dot" style="background:${s.color}"></span>${s.label}${admin? `: ${usd(s.val)} (${(s.val/segTotal*100).toFixed(1)}%)` : ` (${(s.val/segTotal*100).toFixed(1)}%)`}</span>`).join('')}
       </div>
     </div>
   `;
@@ -1206,7 +1272,7 @@ function renderProducts(){
         ${history.length? `
         <table>
           <tr><th>Fecha</th><th>Embarque</th><th class="num-cell">Precio FOB</th><th class="num-cell">Costo estimado</th><th class="num-cell">Costo real</th></tr>
-          ${history.map(h=>`<tr><td>${h.date}</td><td>${h.shipment}</td><td class="num-cell">${usd(h.fobUnit)}</td><td class="num-cell">${usd(h.estUnit)}</td><td class="num-cell">${usd(h.realUnit)}</td></tr>`).join('')}
+          ${history.map(h=>`<tr><td>${formatDateEs(h.date)}</td><td>${h.shipment}</td><td class="num-cell">${usd(h.fobUnit)}</td><td class="num-cell">${usd(h.estUnit)}</td><td class="num-cell">${usd(h.realUnit)}</td></tr>`).join('')}
         </table>` : `<div class="empty">Sin movimientos registrados todavía.</div>`}
       </div>
     `).join('')}
@@ -1534,7 +1600,7 @@ function renderShipmentDetail(sh, r){
       <h3>Historial de fases</h3>
       <table>
         <tr><th>Fase</th><th>Fecha</th></tr>
-        ${(sh.phaseLog||[]).map(pl=>`<tr><td>Fase ${pl.phase} — ${PHASES[pl.phase]}</td><td>${pl.date}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Sin historial registrado</td></tr>'}
+        ${(sh.phaseLog||[]).map(pl=>`<tr><td>Fase ${pl.phase} — ${PHASES[pl.phase]}</td><td>${formatDateEs(pl.date)}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Sin historial registrado</td></tr>'}
       </table>
     </div>
   `;
@@ -1566,7 +1632,7 @@ function renderPayments(){
             <td>${paymentLabel(p)}</td>
             <td>${productNames}</td>
             <td class="num-cell">${usd(p.amount)}</td>
-            <td>${p.dueDate}</td>
+            <td>${formatDateEs(p.dueDate)}</td>
             <td><span class="pill ${p.status==='pagado'?'green':(overdue?'red':'amber')}">${p.status==='pagado'?'Pagado':(overdue?'Vencido':'Pendiente')}</span></td>
           </tr>`;
         }).join('')}
@@ -1582,6 +1648,15 @@ function renderParams(){
   return `
     <h2 class="page-title">Parámetros globales</h2>
     <div class="page-sub">Valores por defecto para nuevos embarques. Cada embarque conserva su propia copia — cambiar esto no altera importaciones ya registradas.</div>
+    <div class="card">
+      <h3>Tipo de cambio del día</h3>
+      <div class="page-sub" style="margin-bottom:14px;">Esta app no tiene un feed de tipo de cambio en vivo — actualiza este valor manualmente cada día. A los Socios siempre se les muestra este tipo de cambio + $1.10 MXN, sin excepción.</div>
+      <div class="grid-3">
+        <div class="field"><label>Tipo de cambio de hoy (MXN/USD)</label><input type="number" step="0.0001" id="param-daily-fx" value="${STATE.dailyExchangeRate}" ${dis()}/></div>
+        <div><div class="eyebrow" style="font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;">TC aplicado a Socios (+$1.10)</div><div style="font-weight:700;font-size:16px;margin-top:6px;">${fmt(socioExchangeRate())}</div></div>
+      </div>
+      <button class="btn" id="btn-save-daily-fx" ${dis()}>Guardar tipo de cambio de hoy</button>
+    </div>
     <div class="card">
       <h3>Tasas fiscales por defecto</h3>
       <div class="grid-4">
@@ -1639,73 +1714,73 @@ function renderUsers(){
 
 /* ---------- SIMULADOR ---------- */
 function renderSimulator(){
-  if(!selectedShipmentId && STATE.shipments.length) selectedShipmentId = STATE.shipments[0].id;
-  const base = STATE.shipments.find(s=>s.id===selectedShipmentId);
+  if(!simShipmentId && STATE.shipments.length) simShipmentId = selectedShipmentId || STATE.shipments[0].id;
+  const base = STATE.shipments.find(s=>s.id===simShipmentId);
   if(!base) return '<div class="empty">Registra un embarque primero.</div>';
 
-  const o = simOverrides;
+  // Clon profundo del embarque real: el escenario simulado parte SIEMPRE de los datos oficiales
+  // completos del embarque seleccionado (mismos productos, mismos costos, misma prorrata) y solo
+  // se le tocan, como mucho, dos cosas: el costo del flete marítimo y el tipo de cambio. Ningún
+  // otro concepto se agrega, se quita ni se recalcula con una fórmula distinta a la oficial —
+  // así se garantiza que no hay doble contabilización ni conceptos "sumados al final".
   const sim = JSON.parse(JSON.stringify(base));
-  if(o.exchangeRate!=null) sim.exchangeRate = o.exchangeRate;
-  if(o.igi!=null) sim.taxParams.igi = o.igi;
-  if(o.freightAmount!=null){
-    const oceanBase = base.costItems.find(b=>b.code==='OCEAN');
-    sim.costItems.forEach(ci=>{ if(ci.code==='OCEAN'){ const perUnit = o.freightAmount/(ci.qty||1); ci.rate = perUnit; } });
-  }
-  if(o.containers!=null){
-    sim.containers = o.containers;
-    sim.costItems.forEach(ci=>{ if(ci.basis==='per_container') ci.qty = o.containers; });
-  }
-  if(o.fobUnit!=null && sim.items[0]){
-    sim.items.forEach(it=>{ it.fobUnit = o.fobUnit; });
-  }
-  if(o.extraAmount!=null){
-    sim.extraCosts = [...sim.extraCosts, {id:'sim-extra', concept:'Ajuste simulado', category:'Otro', amount:o.extraAmount, currency:'USD', date: todayStr(), productId:null}];
-  }
 
-  const rBase = computeShipment(base);
+  const rBaseFull = computeShipment(base);
+  let freightItemBase = base.costItems.find(ci=>ci.code==='OCEAN');
+  const currentFreight = freightItemBase ? (rBaseFull.amounts[freightItemBase.id]||0) : 0;
+
+  let freightItemSim = sim.costItems.find(ci=>ci.code==='OCEAN');
+  if(!freightItemSim){
+    // Este embarque no tiene un concepto de flete marítimo capturado (p.ej. embarques cuyo costo
+    // se armó solo con conceptos de aduana/transporte nacional). Se agrega uno en $0 SOLO dentro
+    // de la copia simulada, para que el campo del simulador tenga algo real que modificar sin
+    // alterar el embarque oficial ni inventar un flete que no existía.
+    freightItemSim = {id:'sim-ocean-temp', name:'Flete marítimo (simulado)', code:'OCEAN', basis:'flat', rate:0, qty:1, includeInCIF:true, isRealExpense:true};
+    sim.costItems.push(freightItemSim);
+  }
+  if(simFreightOverride!=null){
+    // Se normaliza a "flat" con el monto total exacto que el usuario capturó, sin importar si el
+    // concepto original se prorrateaba por contenedor/HBL — así el monto que se ve es el monto
+    // que se aplica, uno a uno, y no se multiplica dos veces por una cantidad.
+    freightItemSim.basis = 'flat';
+    freightItemSim.qty = 1;
+    freightItemSim.rate = simFreightOverride;
+  }
+  if(simExchangeRateOverride!=null) sim.exchangeRate = simExchangeRateOverride;
+
+  const rBase = rBaseFull;
   const rSim = computeShipment(sim);
   const diffTotal = rSim.landedTotal - rBase.landedTotal;
-
   const productName = pid => (STATE.products.find(p=>p.id===pid)||{}).name || '—';
-  const oceanItem = base.costItems.find(c=>c.code==='OCEAN');
-  const currentFreight = oceanItem ? oceanItem.rate*oceanItem.qty : 0;
-  const currentFOB = base.items[0] ? base.items[0].fobUnit : 0;
 
   return `
     <h2 class="page-title">Simulador de escenarios</h2>
-    <div class="page-sub">Cambios aquí son temporales — nunca modifican los datos oficiales del embarque</div>
+    <div class="page-sub">Cambios aquí son temporales — nunca modifican los datos oficiales del embarque. Solo puedes ajustar el flete marítimo y el tipo de cambio; todo lo demás se toma tal cual del embarque real.</div>
 
     <div class="card">
-      <h3>Embarque base: ${base.number}</h3>
-      <div class="grid-3">
-        <div class="field"><label>Tipo de cambio (actual ${base.exchangeRate})</label><input type="number" step="0.01" id="sim-fx" value="${o.exchangeRate ?? base.exchangeRate}"/></div>
-        <div class="field"><label>IGI (actual ${(base.taxParams.igi*100).toFixed(1)}%)</label><input type="number" step="0.001" id="sim-igi" value="${o.igi ?? base.taxParams.igi}"/></div>
-        <div class="field"><label>Contenedores (actual ${base.containers})</label><input type="number" id="sim-cnt" value="${o.containers ?? base.containers}"/></div>
+      <h3>Embarque a simular</h3>
+      <div class="field"><label>Seleccionar embarque</label>
+        <select id="sim-shipment-select">
+          ${STATE.shipments.map(s=>`<option value="${s.id}" ${s.id===simShipmentId?'selected':''}>${s.number}</option>`).join('')}
+        </select>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Variables del escenario</h3>
       <div class="grid-2">
-        <div class="field"><label>Flete marítimo total — monto directo (actual ${usd(currentFreight)})</label><input type="number" step="1" id="sim-freight-amt" value="${o.freightAmount ?? currentFreight}"/></div>
-        <div class="field"><label>Precio FOB del proveedor — monto directo (actual ${usd(currentFOB)})</label><input type="number" step="0.01" id="sim-fob-amt" value="${o.fobUnit ?? currentFOB}"/></div>
+        <div class="field"><label>Flete marítimo — monto total USD (actual ${usd(currentFreight)})</label><input type="number" step="1" id="sim-freight-amt" value="${(simFreightOverride ?? currentFreight).toFixed(2)}"/></div>
+        <div class="field"><label>Tipo de cambio (actual ${base.exchangeRate})</label><input type="number" step="0.01" id="sim-fx" value="${simExchangeRateOverride ?? base.exchangeRate}"/></div>
       </div>
-      <div class="field"><label>Costo adicional a simular (USD)</label><input type="number" step="1" id="sim-extra-amt" value="${o.extraAmount ?? 0}"/></div>
-      <button class="btn" id="btn-run-sim">Recalcular escenario</button>
-      <button class="btn ghost" id="btn-reset-sim">Restablecer</button>
+      <button class="btn ghost" id="btn-reset-sim">Restablecer a valores reales</button>
     </div>
 
     <div class="card">
       <h3>Flete: real vs. simulado</h3>
       <table>
         <tr><td>Flete real</td><td class="num-cell">${usd(currentFreight)}</td></tr>
-        <tr><td>Flete simulado</td><td class="num-cell">${usd(o.freightAmount ?? currentFreight)}</td></tr>
-        <tr class="total"><td>Diferencia</td><td class="num-cell">${diffBadge((o.freightAmount ?? currentFreight)-currentFreight,0)}</td></tr>
-      </table>
-    </div>
-
-    <div class="card">
-      <h3>Precio proveedor: real vs. simulado</h3>
-      <table>
-        <tr><td>FOB actual</td><td class="num-cell">${usd(currentFOB)}</td></tr>
-        <tr><td>FOB simulado</td><td class="num-cell">${usd(o.fobUnit ?? currentFOB)}</td></tr>
-        <tr class="total"><td>Diferencia por unidad</td><td class="num-cell">${diffBadge((o.fobUnit ?? currentFOB)-currentFOB,0)}</td></tr>
+        <tr><td>Flete simulado</td><td class="num-cell">${usd(simFreightOverride ?? currentFreight)}</td></tr>
+        <tr class="total"><td>Diferencia</td><td class="num-cell">${diffBadge((simFreightOverride ?? currentFreight)-currentFreight, pctOf((simFreightOverride ?? currentFreight)-currentFreight, currentFreight))}</td></tr>
       </table>
     </div>
 
@@ -1713,11 +1788,10 @@ function renderSimulator(){
       <h3>Comparación combinada</h3>
       <table>
         <tr><th></th><th class="num-cell">Actual</th><th class="num-cell">Simulado</th><th class="num-cell">Diferencia</th></tr>
-        <tr><td>Valor mercancía FOB</td><td class="num-cell">${usd(rBase.fobTotal)}</td><td class="num-cell">${usd(rSim.fobTotal)}</td><td class="num-cell">${diffBadge(rSim.fobTotal-rBase.fobTotal,0)}</td></tr>
-        <tr><td>Logística</td><td class="num-cell">${usd(rBase.logisticsTotal)}</td><td class="num-cell">${usd(rSim.logisticsTotal)}</td><td class="num-cell">${diffBadge(rSim.logisticsTotal-rBase.logisticsTotal,0)}</td></tr>
-        <tr><td>Impuestos</td><td class="num-cell">${usd(rBase.taxesTotal)}</td><td class="num-cell">${usd(rSim.taxesTotal)}</td><td class="num-cell">${diffBadge(rSim.taxesTotal-rBase.taxesTotal,0)}</td></tr>
-        <tr class="total"><td>COSTO UNITARIO (prom. embarque)</td><td class="num-cell">${usd(rBase.landedTotal/(base.items.reduce((a,i)=>a+i.qty,0)||1))}</td><td class="num-cell">${usd(rSim.landedTotal/(sim.items.reduce((a,i)=>a+i.qty,0)||1))}</td><td class="num-cell">${diffBadge((rSim.landedTotal/(sim.items.reduce((a,i)=>a+i.qty,0)||1))-(rBase.landedTotal/(base.items.reduce((a,i)=>a+i.qty,0)||1)),0)}</td></tr>
-        <tr class="total"><td>COSTO TOTAL PUESTO EN DESTINO</td><td class="num-cell">${usd(rBase.landedTotal)}</td><td class="num-cell">${usd(rSim.landedTotal)}</td><td class="num-cell">${diffBadge(diffTotal,0)}</td></tr>
+        <tr><td>Valor mercancía FOB</td><td class="num-cell">${usd(rBase.fobTotal)}</td><td class="num-cell">${usd(rSim.fobTotal)}</td><td class="num-cell">${diffBadge(rSim.fobTotal-rBase.fobTotal, pctOf(rSim.fobTotal-rBase.fobTotal, rBase.fobTotal))}</td></tr>
+        <tr><td>Logística (incluye flete)</td><td class="num-cell">${usd(rBase.logisticsTotal)}</td><td class="num-cell">${usd(rSim.logisticsTotal)}</td><td class="num-cell">${diffBadge(rSim.logisticsTotal-rBase.logisticsTotal, pctOf(rSim.logisticsTotal-rBase.logisticsTotal, rBase.logisticsTotal))}</td></tr>
+        <tr><td>Impuestos</td><td class="num-cell">${usd(rBase.taxesTotal)}</td><td class="num-cell">${usd(rSim.taxesTotal)}</td><td class="num-cell">${diffBadge(rSim.taxesTotal-rBase.taxesTotal, pctOf(rSim.taxesTotal-rBase.taxesTotal, rBase.taxesTotal))}</td></tr>
+        <tr class="total"><td>COSTO TOTAL PUESTO EN DESTINO</td><td class="num-cell">${usd(rBase.landedTotal)}</td><td class="num-cell">${usd(rSim.landedTotal)}</td><td class="num-cell">${diffBadge(diffTotal, pctOf(diffTotal, rBase.landedTotal))}</td></tr>
       </table>
     </div>
 
@@ -1725,10 +1799,10 @@ function renderSimulator(){
       <h3>Costo unitario por producto — escenario</h3>
       <table>
         <tr><th>Producto</th><th class="num-cell">Costo actual</th><th class="num-cell">Costo simulado</th><th class="num-cell">Diferencia</th></tr>
-        ${rSim.perProduct.map((pp,i)=>{
-          const b = rBase.perProduct[i];
-          const d = pp.unitCost-b.unitCost;
-          return `<tr><td>${productName(pp.productId)}</td><td class="num-cell">${usd(b.unitCost)}</td><td class="num-cell">${usd(pp.unitCost)}</td><td class="num-cell">${diffBadge(d,0)}</td></tr>`;
+        ${rSim.perProduct.map(pp=>{
+          const b = rBase.perProduct.find(x=>x.productId===pp.productId) || rBase.perProduct.find(x=>x.itemId===pp.itemId);
+          const d = pp.unitCost-(b?b.unitCost:0);
+          return `<tr><td>${productName(pp.productId)}</td><td class="num-cell">${usd(b?b.unitCost:0)}</td><td class="num-cell">${usd(pp.unitCost)}</td><td class="num-cell">${diffBadge(d, pctOf(d, b?b.unitCost:0))}</td></tr>`;
         }).join('')}
       </table>
     </div>
@@ -1990,6 +2064,12 @@ function attachHandlers(){
   });
 
   // Parámetros
+  const btnDailyFx = document.getElementById('btn-save-daily-fx');
+  if(btnDailyFx) btnDailyFx.addEventListener('click', async ()=>{
+    if(!isAdmin()) return;
+    STATE.dailyExchangeRate = parseFloat(document.getElementById('param-daily-fx').value)||0;
+    await saveState(); render();
+  });
   const btnParams = document.getElementById('btn-save-params');
   if(btnParams) btnParams.addEventListener('click', async ()=>{
     if(!isAdmin()) return;
@@ -2166,21 +2246,33 @@ function attachHandlers(){
     });
   }
 
-  // Simulador
-  const btnRun = document.getElementById('btn-run-sim');
-  if(btnRun) btnRun.addEventListener('click', ()=>{
-    simOverrides = {
-      exchangeRate: parseFloat(document.getElementById('sim-fx').value),
-      igi: parseFloat(document.getElementById('sim-igi').value),
-      containers: parseFloat(document.getElementById('sim-cnt').value),
-      freightAmount: parseFloat(document.getElementById('sim-freight-amt').value),
-      fobUnit: parseFloat(document.getElementById('sim-fob-amt').value),
-      extraAmount: parseFloat(document.getElementById('sim-extra-amt').value) || null,
-    };
+  // Simulador — selector de embarque + las dos únicas variables editables (flete y tipo de
+  // cambio). Se recalcula de inmediato al cambiar cualquiera de los dos, sin botón intermedio.
+  const simSelect = document.getElementById('sim-shipment-select');
+  if(simSelect) simSelect.addEventListener('change', ()=>{
+    simShipmentId = simSelect.value;
+    simFreightOverride = null;
+    simExchangeRateOverride = null;
+    render();
+  });
+  const simFreightInput = document.getElementById('sim-freight-amt');
+  if(simFreightInput) simFreightInput.addEventListener('change', ()=>{
+    const v = parseFloat(simFreightInput.value);
+    simFreightOverride = isNaN(v) ? null : v;
+    render();
+  });
+  const simFxInput = document.getElementById('sim-fx');
+  if(simFxInput) simFxInput.addEventListener('change', ()=>{
+    const v = parseFloat(simFxInput.value);
+    simExchangeRateOverride = isNaN(v) ? null : v;
     render();
   });
   const btnReset = document.getElementById('btn-reset-sim');
-  if(btnReset) btnReset.addEventListener('click', ()=>{ simOverrides = {}; render(); });
+  if(btnReset) btnReset.addEventListener('click', ()=>{
+    simFreightOverride = null;
+    simExchangeRateOverride = null;
+    render();
+  });
 }
 
 /* =========================================================
