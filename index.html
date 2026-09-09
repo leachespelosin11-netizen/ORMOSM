@@ -1247,10 +1247,7 @@ function renderDashboard(){
   const impRate = admin ? STATE.dailyExchangeRate : fx;
   const impMoney = (n)=>mxn(n*impRate);
 
-  return `
-    <h2 class="page-title">Dashboard</h2>
-    <div class="page-sub">Vista ejecutiva — ${STATE.shipments.length} embarque(s) registrado(s)${admin?'':` · montos en MXN, TC ${fmt(fx)}`}</div>
-
+  const nextPayBlock = `
     <div class="card">
       <h3>Próximo pago</h3>
       ${nextPay ? `
@@ -1263,13 +1260,16 @@ function renderDashboard(){
         </div>
       ` : `<div class="empty">Sin pagos pendientes registrados.</div>`}
     </div>
+  `;
 
+  const kpiPhaseBlock = `
     <div class="grid-kpi">
       <div class="kpi"><div class="eyebrow">Total contenedores</div><div class="val">${nContainers}</div></div>
       ${[0,1,2,3,4].map(i=>`<div class="kpi"><div class="eyebrow">Fase ${i}</div><div class="val small">${phaseCounts[i]||0}<span style="font-size:11px;color:var(--ink-soft)"> · ${PHASES[i]}</span></div></div>`).join('')}
     </div>
+  `;
 
-    ${admin ? `
+  const kpiCostBlock = admin ? `
     <div class="grid-kpi">
       <div class="kpi"><div class="eyebrow">Costo FOB</div><div class="val">${usd(totalFOB)}</div></div>
       <div class="kpi"><div class="eyebrow">Flete + gastos import.</div><div class="val">${usd(totalLog)}</div></div>
@@ -1280,14 +1280,15 @@ function renderDashboard(){
       <div class="kpi"><div class="eyebrow">Total impuestos</div><div class="val">${usd(totalTax)}</div></div>
       <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge(totalRealLanded-totalEstLanded, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0)}</div></div>
     </div>
-    ` : `
+  ` : `
     <div class="grid-kpi">
       <div class="kpi"><div class="eyebrow">Costo estimado total</div><div class="val">${money(totalEstLanded)}</div></div>
       <div class="kpi"><div class="eyebrow">Costo real total</div><div class="val accent">${money(totalRealLanded)}</div></div>
       <div class="kpi"><div class="eyebrow">Diferencia est. vs real</div><div class="val">${diffBadge((totalRealLanded-totalEstLanded)*fx, totalEstLanded? (totalRealLanded-totalEstLanded)/totalEstLanded*100:0, moneyRaw)}</div></div>
     </div>
-    `}
+  `;
 
+  const montoImpBlock = `
     <div class="card">
       <h3>Monto IMP — año en curso <small>${currentYear}</small></h3>
       <div class="page-sub" style="margin-bottom:0;">Monto total gastado en importaciones (mercancía + logística + impuestos, costo real puesto en destino) de los embarques con fecha en ${currentYear}. Apartado independiente del próximo pago — se actualiza solo conforme se registren o modifiquen embarques de este año. Siempre en pesos, TC ${fmt(impRate)}.</div>
@@ -1296,8 +1297,9 @@ function renderDashboard(){
         <div class="kpi"><div class="eyebrow">Embarques incluidos</div><div class="val">${impYear.length}</div></div>
       </div>
     </div>
+  `;
 
-    ${admin ? `
+  const shipmentsBlock = admin ? `
     <div class="card">
       <h3>Costo por embarque <small>clic en un embarque para abrirlo</small></h3>
       <table>
@@ -1326,12 +1328,13 @@ function renderDashboard(){
         }).join('')}
       </table>
     </div>
-    ` : `
+  ` : `
     <h3 style="font-family:var(--display);font-weight:800;font-size:16px;margin:22px 0 4px;">Tus embarques</h3>
     <div class="page-sub" style="margin-bottom:14px;">Da clic en cualquier embarque para ver el detalle completo. Descarga el resumen en PDF cuando quieras.</div>
     ${results.map(({sh,r})=> renderClientShipmentCard(sh,r,money,fx,moneyRaw)).join('')}
-    `}
+  `;
 
+  const unitCostBlock = `
     <div class="card">
       <h3>Costo unitario por producto</h3>
       ${productUnitRows.length? `
@@ -1347,12 +1350,16 @@ function renderDashboard(){
           </tr>`).join('')}
       </table>` : `<div class="empty">Sin productos registrados en ningún embarque todavía.</div>`}
     </div>
+  `;
 
+  const alertsBlock = `
     <div class="card">
       <h3>Alertas <small>${alerts.length} activa(s)</small></h3>
       ${alerts.length? alerts.map(a=>`<div class="alert-item"><span class="alert-dot ${a.level}"></span><span>${a.text}</span></div>`).join('') : `<div class="empty">Sin alertas activas.</div>`}
     </div>
+  `;
 
+  const moneyChartBlock = `
     <div class="card">
       <h3>¿A dónde se va el dinero? <small>${admin?'USD':'proporción'}</small></h3>
       <div class="bar-track">
@@ -1362,6 +1369,19 @@ function renderDashboard(){
         ${segs.map(s=>`<span><span class="dot" style="background:${s.color}"></span>${s.label}${admin? `: ${usd(s.val)} (${(s.val/segTotal*100).toFixed(1)}%)` : ` (${(s.val/segTotal*100).toFixed(1)}%)`}</span>`).join('')}
       </div>
     </div>
+  `;
+
+  // Administrador conserva el orden original (KPIs primero). Socio: pidió ver sus embarques
+  // ilustrados justo debajo del próximo pago, y todo lo demás recorrido hacia abajo.
+  const restInOrder = admin
+    ? kpiPhaseBlock + kpiCostBlock + montoImpBlock + shipmentsBlock + unitCostBlock + alertsBlock + moneyChartBlock
+    : shipmentsBlock + kpiPhaseBlock + kpiCostBlock + montoImpBlock + unitCostBlock + alertsBlock + moneyChartBlock;
+
+  return `
+    <h2 class="page-title">Dashboard</h2>
+    <div class="page-sub">Vista ejecutiva — ${STATE.shipments.length} embarque(s) registrado(s)${admin?'':` · montos en MXN, TC ${fmt(fx)}`}</div>
+    ${nextPayBlock}
+    ${restInOrder}
   `;
 }
 
