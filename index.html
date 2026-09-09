@@ -132,6 +132,33 @@
   .status-dot.amber{background:var(--manifest);}
   .dash-ship-row{cursor:pointer;transition:background-color .1s;}
   .dash-ship-row:hover{background:var(--manifest-soft);}
+  /* --- tarjetas de embarque para el Dashboard de Socios --- */
+  .ship-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:20px 22px;margin-bottom:18px;border-left:5px solid var(--phase-color, var(--manifest));cursor:pointer;transition:box-shadow .15s;}
+  .ship-card:hover{box-shadow:var(--shadow-md);}
+  .ship-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:2px;}
+  .ship-card-title{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:-0.005em;}
+  .ship-card-sub{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .ship-card-reassure{font-size:12.5px;color:var(--manifest-deep);font-weight:600;margin-top:10px;}
+  .phase-journey-wrap{background:linear-gradient(135deg,var(--paper),#fff);border-radius:var(--r-md);padding:18px 8px 8px;margin-top:14px;}
+  .phase-journey{display:flex;align-items:flex-start;}
+  .phase-journey-step{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0;}
+  .phase-journey-connector{flex:0 0 18px;height:3px;background:var(--line);margin-top:25px;border-radius:2px;}
+  .phase-journey-connector.done{background:var(--ok);}
+  .phase-icon-circle{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;box-shadow:0 1px 3px rgba(20,29,46,0.1);transition:transform .15s;}
+  .phase-journey-step.current .phase-icon-circle{box-shadow:0 0 0 4px var(--manifest-soft), 0 3px 10px rgba(15,145,121,.35);transform:scale(1.14);}
+  .phase-journey-step.done .phase-icon-circle{opacity:.85;}
+  .phase-journey-step.upcoming .phase-icon-circle{opacity:.35;filter:grayscale(.4);}
+  .phase-journey-label{font-size:9.5px;font-family:var(--mono);text-align:center;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.02em;max-width:76px;line-height:1.3;}
+  .phase-journey-step.current .phase-journey-label{color:var(--manifest-deep);font-weight:700;}
+  .ship-card-costs{display:flex;gap:22px;flex-wrap:wrap;margin:16px 0;padding:14px 18px;background:var(--paper);border-radius:var(--r-md);}
+  .ship-card-costs>div{display:flex;flex-direction:column;gap:3px;}
+  .ship-card-costs .eyebrow{font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--ink-soft);}
+  .ship-card-costs .val-lg{font-family:var(--display);font-weight:800;font-size:16px;}
+  .ship-card-contents{margin:8px 0 4px;}
+  .ship-card-contents .eyebrow{font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--ink-soft);}
+  .ship-card-contents ul{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--ink);}
+  .ship-card-contents li{margin-bottom:3px;}
+  .ship-card-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
   .diff-badge{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:6px;font-weight:500;}
   .diff-badge.up{background:var(--warn-soft);color:var(--warn);}
   .diff-badge.down{background:var(--ok-soft);color:var(--ok);}
@@ -161,6 +188,12 @@
   @media (max-width: 700px){
     .grid-kpi, .grid-3, .grid-4, .grid-5, .grid-2{grid-template-columns:1fr;}
     table{font-size:11.5px;}
+    .phase-icon-circle{width:32px;height:32px;}
+    .phase-icon-circle svg{width:17px;height:17px;}
+    .phase-journey-label{display:none;}
+    .phase-journey-connector{flex:0 0 6px;margin-top:14px;}
+    .ship-card{padding:16px 16px;}
+    .ship-card-costs{gap:14px;padding:12px 14px;}
   }
   /* --- auth / RBAC --- */
   .hidden{display:none !important;}
@@ -208,6 +241,82 @@ const PHASES = [
   'Traslado a bodega',
   'Bodega / Contenedor devuelto'
 ];
+
+// Ilustraciones pequeñas por fase para el Dashboard de Socios: fábrica → barco → puerto →
+// trailer → bodega. SVG inline (sin assets externos) para que el archivo siga siendo autónomo.
+const PHASE_ILLUSTRATIONS = [
+  // Fase 0 — Producción: fabriquita
+  `<svg viewBox="0 0 64 64" width="26" height="26"><rect x="8" y="30" width="48" height="26" fill="#c2703c" rx="2"/><rect x="16" y="14" width="8" height="16" fill="#9c5828"/><rect x="30" y="8" width="8" height="22" fill="#9c5828"/><circle cx="34" cy="5" r="4" fill="#e6cfa8"/><circle cx="20" cy="10" r="3" fill="#e6cfa8"/><rect x="16" y="40" width="9" height="9" fill="#fff"/><rect x="30" y="40" width="9" height="9" fill="#fff"/><rect x="44" y="40" width="9" height="9" fill="#fff"/></svg>`,
+  // Fase 1 — En tránsito: barquito en el mar
+  `<svg viewBox="0 0 64 64" width="26" height="26"><path d="M6 38 L58 38 L50 52 L14 52 Z" fill="#123a5e"/><rect x="18" y="24" width="11" height="14" fill="#0f9179"/><rect x="31" y="20" width="11" height="18" fill="#c2703c"/><rect x="44" y="26" width="8" height="12" fill="#0a2540"/><path d="M2 46 Q14 40 26 46 Q38 52 50 46 Q56 44 62 46" stroke="#8fc4e0" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
+  // Fase 2 — Destino / Desaduanamiento: puertito con grúa
+  `<svg viewBox="0 0 64 64" width="26" height="26"><rect x="8" y="46" width="48" height="9" fill="#0a2540"/><rect x="13" y="34" width="15" height="11" fill="#c2703c"/><rect x="30" y="34" width="15" height="11" fill="#0f9179"/><line x1="46" y1="8" x2="46" y2="46" stroke="#5c6b73" stroke-width="3"/><line x1="18" y1="12" x2="52" y2="12" stroke="#5c6b73" stroke-width="3"/><line x1="22" y1="12" x2="22" y2="30" stroke="#93a3aa" stroke-width="2"/></svg>`,
+  // Fase 3 — Traslado a bodega: trailer
+  `<svg viewBox="0 0 64 64" width="26" height="26"><rect x="4" y="24" width="36" height="19" fill="#eef1f1" stroke="#0a2540" stroke-width="2"/><path d="M40 29 h11 l7 8 v6 h-18 z" fill="#c2703c" stroke="#0a2540" stroke-width="2"/><circle cx="15" cy="46" r="5" fill="#0a2540"/><circle cx="47" cy="46" r="5" fill="#0a2540"/><circle cx="15" cy="46" r="2" fill="#eef1f1"/><circle cx="47" cy="46" r="2" fill="#eef1f1"/></svg>`,
+  // Fase 4 — Bodega / Contenedor devuelto: bodeguita (llegada)
+  `<svg viewBox="0 0 64 64" width="26" height="26"><path d="M4 28 L32 10 L60 28 V54 H4 Z" fill="#0f9179"/><rect x="23" y="34" width="18" height="20" fill="#e1f4ef"/><rect x="8" y="30" width="10" height="10" fill="#e1f4ef"/><rect x="46" y="30" width="10" height="10" fill="#e1f4ef"/><path d="M27 44 l3 3 6 -7" stroke="#0b6b58" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+];
+const PHASE_ACCENTS = ['#c2703c','#123a5e','#0a2540','#9c5828','#0f9179'];
+
+function renderPhaseJourney(currentPhase){
+  return `
+    <div class="phase-journey-wrap">
+      <div class="phase-journey">
+        ${PHASES.map((label,i)=>{
+          const cls = i<currentPhase ? 'done' : (i===currentPhase ? 'current' : 'upcoming');
+          const connector = i<4 ? `<div class="phase-journey-connector ${i<currentPhase?'done':''}"></div>` : '';
+          return `<div class="phase-journey-step ${cls}">
+            <div class="phase-icon-circle">${PHASE_ILLUSTRATIONS[i]}</div>
+            <div class="phase-journey-label">${label}</div>
+          </div>${connector}`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Tarjeta de embarque "amigable" para el Dashboard de Socios: fase ilustrada, costo total,
+// contenido del embarque y descarga de resumen — todo en una sola tarjeta con clic para abrir
+// el detalle. No se usa en el Dashboard de Administrador (ese conserva su tabla densa de datos).
+function renderClientShipmentCard(sh, r, money, fx, moneyRaw){
+  const reassure = sh.phase===4
+    ? '✅ Tu pedido ya llegó a bodega — todo en orden.'
+    : '🚚 Tu pedido va en camino — todo va bien.';
+  const contents = sh.items.map(it=>{
+    const prod = STATE.products.find(p=>p.id===it.productId);
+    return `<li>${prod?prod.name:'—'} — ${fmt(it.qty,0)} ${prod&&prod.uom?prod.uom:'pza'}</li>`;
+  }).join('') || '<li>Sin productos capturados todavía.</li>';
+
+  return `
+    <div class="ship-card" data-goto-shipment="${sh.id}" style="--phase-color:${PHASE_ACCENTS[sh.phase]}">
+      <div class="ship-card-head">
+        <div>
+          <div class="ship-card-title">${sh.number}</div>
+          <div class="ship-card-sub">${sh.originPort||'China'} → ${sh.destPort||'Guadalajara'}</div>
+        </div>
+        <span class="pill blue">${PHASES[sh.phase]}</span>
+      </div>
+      <div class="ship-card-reassure">${reassure}</div>
+
+      ${renderPhaseJourney(sh.phase)}
+
+      <div class="ship-card-costs">
+        <div><span class="eyebrow">Costo estimado</span><span class="val-lg">${money(r.estimated.landedTotal)}</span></div>
+        <div><span class="eyebrow">Costo real</span><span class="val-lg" style="color:var(--manifest-deep)">${money(r.landedTotal)}</span></div>
+        <div><span class="eyebrow">Diferencia</span>${diffBadge(r.diff*fx, r.diffPct, moneyRaw)}</div>
+      </div>
+
+      <div class="ship-card-contents">
+        <div class="eyebrow">Contenido del embarque</div>
+        <ul>${contents}</ul>
+      </div>
+
+      <div class="ship-card-actions" onclick="event.stopPropagation()">
+        <button class="btn small" data-report-pdf="${sh.id}">📄 Descargar resumen (PDF)</button>
+      </div>
+    </div>
+  `;
+}
 
 const INCOTERMS = ['EXW','FOB','FCA','CFR','CIF','CPT','CIP','DAP','DPU','DDP'];
 
@@ -1188,12 +1297,13 @@ function renderDashboard(){
       </div>
     </div>
 
+    ${admin ? `
     <div class="card">
       <h3>Costo por embarque <small>clic en un embarque para abrirlo</small></h3>
       <table>
         <tr>
           <th></th><th>Embarque</th><th>Fase</th><th>Proveedor</th>
-          ${admin? `<th class="num-cell">FOB</th><th class="num-cell">Flete+Gastos</th><th class="num-cell">Impuestos</th>`:''}
+          <th class="num-cell">FOB</th><th class="num-cell">Flete+Gastos</th><th class="num-cell">Impuestos</th>
           <th class="num-cell">Estimado</th><th class="num-cell">Real</th><th class="num-cell">Diferencia</th><th></th>
         </tr>
         ${results.map(({sh,r})=>{
@@ -1204,7 +1314,7 @@ function renderDashboard(){
             <td><strong>${sh.number}</strong></td>
             <td><span class="pill blue">${PHASES[sh.phase]}</span></td>
             <td>${sh.supplierName||'—'}</td>
-            ${admin? `<td class="num-cell">${usd(r.fobTotal)}</td><td class="num-cell">${usd(r.logisticsTotal)}</td><td class="num-cell">${usd(r.taxesTotal)}</td>`:''}
+            <td class="num-cell">${usd(r.fobTotal)}</td><td class="num-cell">${usd(r.logisticsTotal)}</td><td class="num-cell">${usd(r.taxesTotal)}</td>
             <td class="num-cell">${money(r.estimated.landedTotal)}</td>
             <td class="num-cell">${money(r.landedTotal)}</td>
             <td class="num-cell">${diffBadge(r.diff*fx, r.diffPct, moneyRaw)}</td>
@@ -1216,6 +1326,11 @@ function renderDashboard(){
         }).join('')}
       </table>
     </div>
+    ` : `
+    <h3 style="font-family:var(--display);font-weight:800;font-size:16px;margin:22px 0 4px;">Tus embarques</h3>
+    <div class="page-sub" style="margin-bottom:14px;">Da clic en cualquier embarque para ver el detalle completo. Descarga el resumen en PDF cuando quieras.</div>
+    ${results.map(({sh,r})=> renderClientShipmentCard(sh,r,money,fx,moneyRaw)).join('')}
+    `}
 
     <div class="card">
       <h3>Costo unitario por producto</h3>
