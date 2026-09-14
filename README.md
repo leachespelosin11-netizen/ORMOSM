@@ -66,12 +66,19 @@ proyecto ni introducir infraestructura nueva (base de datos, API) todavía.
   administración de usuarios).
 - **Usuarios**: 5 cuentas reales precargadas en `seedState().users` (Liliana
   Morales, Ramiro Morales, Cristhian Ortiz — socios; Leon Leach, Enrique
-  Valdivia — administradores). Cada una con su propio correo y contraseña.
-- **Contraseñas**: nunca en texto plano. Se guarda `SHA-256(salt + ':' + password)`
-  más un `salt` aleatorio por usuario. Las contraseñas temporales originales se
-  generaron una sola vez con Python (`secrets`) y se entregaron fuera de este
-  repositorio (por chat) — no están ni estuvieron nunca en el código ni en git.
-  Todas fuerzan cambio de contraseña en el primer login (`mustChangePassword`).
+  Valdivia — administradores).
+- **Login = elegir tu nombre, sin contraseña** (decisión explícita del usuario,
+  2026-09-14, revirtiendo el esquema de correo+contraseña original): las
+  contraseñas vivían en `localStorage`, que es por navegador/dispositivo — un
+  cambio de contraseña en una compu nunca llegaba a las demás, así que entrar
+  desde un dispositivo nuevo siempre fallaba. Un selector de nombre no depende
+  de ningún estado que sincronizar entre dispositivos, así que funciona igual
+  en cualquiera. A cambio, ya no hay ninguna barrera de acceso — cualquiera con
+  el link de la app puede entrar como cualquier usuario, incluido Administrador,
+  con un clic. Ver la advertencia de seguridad más abajo, que ahora aplica con
+  más razón todavía. Los campos `passwordHash`/`salt`/`mustChangePassword` siguen
+  en el modelo de datos de cada usuario como información legada — no se usan
+  para nada, no se limpiaron para no tocar el shape de los datos sin necesidad.
 - **Rutas reales**: `/dashboard`, `/embarques`, `/pagos`, `/simulador`,
   `/productos`, `/proveedores`, `/forwarders`, `/parametros`, `/usuarios`,
   navegación con `history.pushState`. `vercel.json` reescribe cualquier ruta a
@@ -85,15 +92,19 @@ proyecto ni introducir infraestructura nueva (base de datos, API) todavía.
 
 Este es un sistema de **autorización de interfaz**, no un perímetro de
 seguridad real, porque toda la lógica corre en el navegador y no hay backend
-que la haga cumplir:
+que la haga cumplir — y desde que el login pasó a ser solo "elige tu nombre"
+(sin contraseña), esto es literalmente cierto sin necesidad de saltarse nada:
 
-- Cualquier persona con las herramientas de desarrollador puede leer este
-  archivo, ver los hashes de contraseñas y saltarse cualquier verificación de
-  rol modificando el JavaScript en tiempo de ejecución.
-- No existe una "API" que pueda rechazar una petición de un socio: no hay
-  API, todo el cálculo y guardado ocurre en el cliente.
-- Los hashes de contraseña, aunque no son texto plano, sí se descargan al
-  navegador de cualquiera que visite el sitio y son atacables offline.
+- Cualquiera con el link de la app entra como cualquier usuario, incluido
+  Administrador, con un solo clic — no hace falta ni siquiera abrir las
+  herramientas de desarrollador.
+- Cualquier persona con las herramientas de desarrollador puede además leer
+  este archivo y saltarse cualquier verificación de rol modificando el
+  JavaScript en tiempo de ejecución, por si hiciera falta.
+- No existe una "API" que pueda rechazar una petición de un socio para el
+  resto de la app: no hay API, todo el cálculo y guardado ocurre en el
+  cliente (la única excepción real son los endpoints de `/api/reminders` y
+  `/api/cron-send-reminders`, que sí corren en un servidor).
 
 Para una protección real (la que normalmente se espera de "no se puede
 saltar por API directa") se necesita backend + base de datos — ver la sección

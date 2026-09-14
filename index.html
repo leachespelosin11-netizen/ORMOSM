@@ -206,6 +206,13 @@
   .auth-brand .mark{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--manifest);text-transform:uppercase;}
   .auth-brand h1{font-family:var(--display);font-size:20px;font-weight:800;margin:6px 0 0 0;color:var(--ink);letter-spacing:-0.01em;}
   .auth-brand .sub{font-size:12.5px;color:var(--ink-soft);margin-top:8px;line-height:1.5;}
+  .name-picker{display:flex;flex-direction:column;gap:8px;}
+  .name-picker-btn{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-md);transition:border-color .12s,background .12s;}
+  .name-picker-btn:hover{border-color:var(--manifest);background:var(--manifest-soft);}
+  .name-picker-avatar{width:38px;height:38px;border-radius:50%;background:var(--hull);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:13px;flex-shrink:0;}
+  .name-picker-info{display:flex;flex-direction:column;gap:1px;}
+  .name-picker-name{font-weight:700;font-size:13.5px;color:var(--ink);}
+  .name-picker-role{font-family:var(--mono);font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
   .user-menu .user-name{font-weight:700;font-size:13px;color:#fff;}
   .user-menu .user-role{font-family:var(--mono);font-size:10.5px;color:#8ea3ba;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
 </style>
@@ -680,53 +687,27 @@ function expireSessionIfNeeded(){
 }
 function touchSession(){ if(STATE.session) STATE.session.expiresAt = Date.now()+SESSION_TTL_MS; }
 
-async function sha256Hex(str){
-  const data = new TextEncoder().encode(str);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function genSalt(){ return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join(''); }
-async function hashPassword(password, salt){ return sha256Hex(salt+':'+password); }
-function generateTempPassword(len=12){
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const arr = new Uint32Array(len);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(n=>chars[n % chars.length]).join('');
-}
-
+// Login = elegir tu nombre, sin contraseña. Decisión explícita del usuario (2026-09-14): el
+// login por correo+contraseña vivía en localStorage, que no se sincroniza entre dispositivos —
+// cambiar tu contraseña en una compu no la actualizaba en las demás, así que entrar desde un
+// dispositivo nuevo siempre fallaba. Un selector de nombre no depende de ningún estado que
+// sincronizar, así que funciona igual en cualquier dispositivo. A cambio, cualquiera con el link
+// de la app puede entrar como cualquier usuario (incluido Administrador) con un solo clic — se lo
+// advertí al usuario explícitamente y así lo pidió.
 let loginError = '';
-let pwChangeError = '';
-let loginBusy = false;
 
-async function attemptLogin(email, password){
-  loginBusy = true;
-  const u = (STATE.users||[]).find(x=>x.email.toLowerCase()===String(email||'').trim().toLowerCase());
-  if(!u || u.active===false){ loginError='Correo o contraseña incorrectos.'; loginBusy=false; return; }
-  const h = await hashPassword(password, u.salt);
-  loginBusy = false;
-  if(h !== u.passwordHash){ loginError='Correo o contraseña incorrectos.'; return; }
+async function loginAsUser(userId){
+  const u = (STATE.users||[]).find(x=>x.id===userId);
+  if(!u || u.active===false){ loginError='Ese usuario ya no está activo.'; render(); return; }
   loginError='';
   STATE.session = { userId: u.id, expiresAt: Date.now()+SESSION_TTL_MS };
   await saveState();
-  navigateTo(u.mustChangePassword ? 'login' : 'dashboard', true);
+  navigateTo('dashboard', true);
 }
 async function logout(){
   STATE.session = null;
   await saveState();
   navigateTo('login', true);
-}
-async function completePasswordChange(newPw, confirmPw){
-  const u = currentUser();
-  if(!u) return;
-  if(!newPw || newPw.length<8){ pwChangeError='La contraseña debe tener al menos 8 caracteres.'; render(); return; }
-  if(newPw !== confirmPw){ pwChangeError='Las contraseñas no coinciden.'; render(); return; }
-  const salt = genSalt();
-  u.salt = salt;
-  u.passwordHash = await hashPassword(newPw, salt);
-  u.mustChangePassword = false;
-  pwChangeError='';
-  await saveState();
-  navigateTo('dashboard', true);
 }
 
 /* ---------- Router (URLs reales: /productos, /embarques, etc.) ---------- */
@@ -1084,38 +1065,28 @@ function renderSidebarFoot(u){
 }
 
 function renderLogin(){
+  const activeUsers = (STATE.users||[]).filter(u=>u.active!==false);
+  const initials = (name)=> name.split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
   return `
   <div class="auth-card">
     <div class="auth-brand">
       <img class="auth-logo" src="${ORMO_LOGO}" alt="ORMO"/>
       <div class="mark">ORMO · Manifiesto</div>
-      <h1>Control de Importaciones</h1>
+      <h1>¿Quién eres?</h1>
+      <div class="sub">Elige tu nombre para entrar.</div>
     </div>
-    <form id="login-form">
-      <div class="field"><label>Correo</label><input type="email" id="login-email" required autocomplete="username"/></div>
-      <div class="field"><label>Contraseña</label><input type="password" id="login-password" required autocomplete="current-password"/></div>
-      ${loginError? `<div class="flag-note">${loginError}</div>` : ''}
-      <button class="btn" type="submit" style="width:100%;justify-content:center;" ${loginBusy?'disabled':''}>Iniciar sesión</button>
-    </form>
-  </div>`;
-}
-
-function renderChangePassword(u){
-  return `
-  <div class="auth-card">
-    <div class="auth-brand">
-      <img class="auth-logo" src="${ORMO_LOGO}" alt="ORMO"/>
-      <div class="mark">ORMO · Manifiesto</div>
-      <h1>Actualiza tu contraseña</h1>
-      <div class="sub">Es tu primer inicio de sesión, ${u.name}. Define una contraseña nueva para continuar.</div>
+    <div class="name-picker">
+      ${activeUsers.map(u=>`
+        <button class="name-picker-btn" data-login-as="${u.id}">
+          <span class="name-picker-avatar">${initials(u.name)}</span>
+          <span class="name-picker-info">
+            <span class="name-picker-name">${u.name}</span>
+            <span class="name-picker-role">${ROLES[u.role].label}</span>
+          </span>
+        </button>
+      `).join('')}
     </div>
-    <form id="change-password-form">
-      <div class="field"><label>Nueva contraseña (mín. 8 caracteres)</label><input type="password" id="new-password" minlength="8" required autocomplete="new-password"/></div>
-      <div class="field"><label>Confirmar contraseña</label><input type="password" id="confirm-password" minlength="8" required autocomplete="new-password"/></div>
-      ${pwChangeError? `<div class="flag-note">${pwChangeError}</div>` : ''}
-      <button class="btn" type="submit" style="width:100%;justify-content:center;">Guardar y continuar</button>
-    </form>
-    <button class="btn ghost" id="btn-cancel-pw-change" style="width:100%;justify-content:center;margin-top:8px;">Cancelar y cerrar sesión</button>
+    ${loginError? `<div class="flag-note">${loginError}</div>` : ''}
   </div>`;
 }
 
@@ -1129,21 +1100,9 @@ function render403(){
 }
 
 function attachAuthHandlers(){
-  const form = document.getElementById('login-form');
-  if(form) form.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const email = document.getElementById('login-email').value;
-    const pw = document.getElementById('login-password').value;
-    await attemptLogin(email, pw);
-    render();
+  document.querySelectorAll('[data-login-as]').forEach(el=>{
+    el.addEventListener('click', ()=> loginAsUser(el.dataset.loginAs));
   });
-  const cform = document.getElementById('change-password-form');
-  if(cform) cform.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    await completePasswordChange(document.getElementById('new-password').value, document.getElementById('confirm-password').value);
-  });
-  const cancelBtn = document.getElementById('btn-cancel-pw-change');
-  if(cancelBtn) cancelBtn.addEventListener('click', ()=> logout());
 }
 
 function render(){
@@ -1153,17 +1112,9 @@ function render(){
   const u = currentUser();
 
   if(!u){
-    loginBusy = false;
     appShell.classList.add('hidden');
     authScreen.style.display = 'flex';
     authScreen.innerHTML = renderLogin();
-    attachAuthHandlers();
-    return;
-  }
-  if(u.mustChangePassword){
-    appShell.classList.add('hidden');
-    authScreen.style.display = 'flex';
-    authScreen.innerHTML = renderChangePassword(u);
     attachAuthHandlers();
     return;
   }
@@ -1932,20 +1883,18 @@ function renderParams(){
 function renderUsers(){
   return `
     <h2 class="page-title">Usuarios</h2>
-    <div class="page-sub">Cuentas del sistema. Las contraseñas nunca se muestran aquí — solo puedes generar una nueva temporal.</div>
+    <div class="page-sub">Cuentas del sistema. El login es solo por nombre — desactiva una cuenta para quitarle el acceso.</div>
     <div class="card">
       <table>
-        <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estatus</th><th>Debe cambiar contraseña</th><th></th></tr>
+        <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estatus</th><th></th></tr>
         ${(STATE.users||[]).map(u=>`
           <tr style="${u.active===false?'opacity:.55':''}">
             <td>${u.name}</td>
             <td>${u.email}</td>
             <td><span class="pill blue">${ROLES[u.role].label}</span></td>
             <td><span class="pill ${u.active===false?'gray':'green'}">${u.active===false?'Inactivo':'Activo'}</span></td>
-            <td>${u.mustChangePassword?'Sí':'No'}</td>
             <td class="row-actions">
               <button class="btn xs ghost" data-toggle-user-active="${u.id}">${u.active===false?'Reactivar':'Desactivar'}</button>
-              <button class="btn xs ghost" data-reset-user-pw="${u.id}">Generar contraseña temporal</button>
             </td>
           </tr>`).join('')}
       </table>
@@ -2071,21 +2020,6 @@ function attachHandlers(){
       await saveState(); render();
     });
   });
-  document.querySelectorAll('[data-reset-user-pw]').forEach(el=>{
-    el.addEventListener('click', async ()=>{
-      if(!isAdmin()) return;
-      const u = STATE.users.find(x=>x.id===el.dataset.resetUserPw);
-      if(!u) return;
-      const tempPw = generateTempPassword();
-      const salt = genSalt();
-      u.salt = salt;
-      u.passwordHash = await hashPassword(tempPw, salt);
-      u.mustChangePassword = true;
-      await saveState(); render();
-      alert(`Nueva contraseña temporal para ${u.name}:\n\n${tempPw}\n\nCompártela de forma segura. No queda guardada en ningún lugar ni se puede volver a mostrar.`);
-    });
-  });
-
   // Menús desplegables (⋯)
   document.querySelectorAll('[data-menu-toggle]').forEach(el=>{
     el.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMenu(el.dataset.menuToggle); });
